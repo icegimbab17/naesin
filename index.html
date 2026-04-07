@@ -58,7 +58,7 @@
     <script type="text/babel" data-type="module">
         const { useState, useMemo, useRef, useEffect } = window.React;
 
-        // URL 압축 헬퍼
+        // URL 압축 헬퍼 (URL 안전 인코딩 적용)
         const encodeReportData = (analysisData, comments, studentName) => {
             const payload = {
                 period: analysisData.targetPeriod,
@@ -74,7 +74,8 @@
             };
             try {
                 const jsonStr = JSON.stringify(payload);
-                return window.btoa(unescape(encodeURIComponent(jsonStr)));
+                // 한글/이모지 보호를 위해 encodeURIComponent 적용 후 base64 변환
+                return window.btoa(encodeURIComponent(jsonStr));
             } catch(e) {
                 console.error(e);
                 return null;
@@ -83,7 +84,10 @@
 
         const decodeReportData = (encodedStr) => {
             try {
-                const jsonStr = decodeURIComponent(escape(window.atob(encodedStr)));
+                // URL 파싱 중 사라질 수 있는 + 기호를 복구하고 안전하게 디코딩
+                const safeStr = encodedStr.replace(/ /g, '+');
+                const decodedUri = window.atob(safeStr);
+                const jsonStr = decodeURIComponent(decodedUri);
                 return JSON.parse(jsonStr);
             } catch(e) {
                 console.error(e);
@@ -629,8 +633,9 @@
             const encoded = encodeReportData(analysisData, comments, filters.studentName);
             if (!encoded) return alert('링크 생성에 실패했습니다.');
             
+            // encodeURIComponent를 확실히 적용하여 URL 생성
             const baseUrl = window.location.origin + window.location.pathname;
-            const reportUrl = `${baseUrl}?report=${encoded}`;
+            const reportUrl = `${baseUrl}?report=${encodeURIComponent(encoded)}`;
             
             const textarea = document.createElement('textarea');
             textarea.value = reportUrl;
