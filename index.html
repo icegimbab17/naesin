@@ -189,6 +189,7 @@
                     const strongUnits = unitsWithPct.filter(u => u.pct === bestScore || u.pct >= 90).slice(0, 2);
                     strongText = strongUnits.map(u => u.name).join(', ');
 
+                    // 70% 이하인 단원만 보완 단원으로 엄격하게 분류
                     const weakCandidates = unitsWithPct.filter(u => u.pct <= 70).sort((a, b) => a.pct - b.pct);
                     if (weakCandidates.length > 0) {
                         weakText = weakCandidates.slice(0, 2).map(u => u.name).join(', ');
@@ -198,32 +199,34 @@
                 }
 
                 let method = "";
+                // 선생님이 직접 작성하셨던 평가권 조언 복구!
+                const evaluationAdvice = "학교 내신의 출제 및 평가권은 담당 선생님에게 있습니다. 학교 수업 시간에 선생님이 강조한 내용을 최우선으로 복습하고, 교과서의 기본 문제부터 심화 문제까지 철저하게 풀어보세요.";
 
                 if (percentage >= 100) {
-                    method = `모든 단원의 개념을 완벽하게 이해하고 있습니다! 🎉 현재의 훌륭한 학습 패턴을 유지하며, 심화 문제나 다음 학기 선행 학습을 가볍게 시작해 보는 것을 적극 추천합니다.`;
+                    method = `모든 단원의 개념을 완벽하게 이해하고 있습니다! 🎉 현재의 훌륭한 학습 패턴을 유지하며, 심화 문제나 다음 학기 선행 학습을 가볍게 시작해 보는 것을 적극 추천합니다. ${evaluationAdvice}`;
                     weakText = "취약 단원 없음 (완벽함!)";
                 }
                 else if (percentage >= 90) {
                     if (weakText === "취약 단원 없음") {
-                        method = `전체적인 개념 이해도가 매우 우수합니다. 간혹 발생한 실수를 점검하고, 고난도 심화 문제를 집중적으로 풀어보며 100점을 향한 훈련을 진행하세요.`;
+                        method = `전체적인 개념 이해도가 매우 우수합니다. 간혹 발생한 실수를 점검하고, 고난도 심화 문제를 집중적으로 풀어보며 100점을 향한 훈련을 진행하세요. ${evaluationAdvice}`;
                         weakText = "전반적으로 우수함";
                     } else {
-                        method = `전체적인 개념 이해도가 매우 우수합니다. 성취도가 다소 부족한 단원(${weakText})을 보완하고, 고난도 심화 문제를 집중적으로 풀어보세요.`;
+                        method = `전체적인 개념 이해도가 매우 우수합니다. 성취도가 다소 부족한 단원(${weakText})을 보완하고, 고난도 심화 문제를 집중적으로 풀어보세요. ${evaluationAdvice}`;
                     }
                 }
                 else if (percentage >= 70) {
                     if (weakText === "취약 단원 없음") {
-                        method = `기본적인 개념은 잘 잡혀 있습니다. 틀린 문제들의 오답 노트를 작성하고 기본 예제를 다시 한 번 풀어보며 실수를 줄여보세요.`;
+                        method = `기본적인 개념은 잘 잡혀 있습니다. 틀린 문제들의 오답 노트를 작성하고 기본 예제를 다시 한 번 풀어보며 실수를 줄여보세요. ${evaluationAdvice}`;
                         weakText = "전반적으로 양호함";
                     } else {
-                        method = `기본적인 개념은 잘 잡혀 있으나 특정 단원(${weakText})에서 오답이 발생하고 있습니다. 해당 단원의 오답 노트를 작성하고 기본 예제를 다시 한 번 풀어보며 구멍을 메워주세요.`;
+                        method = `기본적인 개념은 잘 잡혀 있으나 특정 단원(${weakText})에서 오답이 발생하고 있습니다. 해당 단원의 오답 노트를 작성하고 기본 예제를 다시 한 번 풀어보며 구멍을 메워주세요. ${evaluationAdvice}`;
                     }
                 }
                 else {
                     if (weakText === "취약 단원 없음") {
-                        method = `전반적인 기초 개념 다지기가 우선되어야 합니다. 교과서 위주의 기본 문제를 반복해서 풀며 원리를 정확히 이해하는 학습이 필요합니다.`;
+                        method = `전반적인 기초 개념 다지기가 우선되어야 합니다. 교과서 위주의 기본 문제를 반복해서 풀며 원리를 정확히 이해하는 학습이 필요합니다. ${evaluationAdvice}`;
                     } else {
-                        method = `전반적인 기초 개념 다지기가 우선되어야 합니다. 특히 취약한 단원(${weakText})을 중심으로 교과서 위주의 기본 문제를 반복해서 풀며 원리를 정확히 이해하는 학습이 필요합니다.`;
+                        method = `특히 취약한 단원(${weakText})에 대한 기본 개념 학습이 우선되어야 합니다. ${evaluationAdvice}`;
                     }
                 }
 
@@ -770,6 +773,7 @@
             e.target.value = '';
         };
 
+        // --- 선생님의 소중한 평가권 조언 복구! ---
         const generateAIComment = () => {
             if (!analysisData) return {};
             const { unitData, totalScore, results } = analysisData;
@@ -790,7 +794,6 @@
                 const strongUnits = unitsWithPct.filter(u => u.pct === bestScore || u.pct >= 90).slice(0, 2);
                 strongText = strongUnits.map(u => u.name).join(', ');
 
-                // 70% 이하인 단원만 보완 단원으로 엄격하게 분류
                 const weakCandidates = unitsWithPct.filter(u => u.pct <= 70).sort((a, b) => a.pct - b.pct);
                 if (weakCandidates.length > 0) {
                     weakText = weakCandidates.slice(0, 2).map(u => u.name).join(', ');
@@ -800,41 +803,41 @@
             }
 
             let method = "";
+            const evaluationAdvice = "학교 내신의 출제 및 평가권은 담당 선생님에게 있습니다. 학교 수업 시간에 선생님이 강조한 내용을 최우선으로 복습하고, 교과서의 기본 문제부터 심화 문제까지 철저하게 풀어보세요.";
 
             if (percentage >= 100) {
-                method = `모든 단원의 개념을 완벽하게 이해하고 있습니다! 🎉 현재의 훌륭한 학습 패턴을 유지하며, 심화 문제나 다음 학기 선행 학습을 가볍게 시작해 보는 것을 적극 추천합니다.`;
+                method = `모든 단원의 개념을 완벽하게 이해하고 있습니다! 🎉 현재의 훌륭한 학습 패턴을 유지하며, 심화 문제나 다음 학기 선행 학습을 가볍게 시작해 보는 것을 적극 추천합니다. ${evaluationAdvice}`;
                 weakText = "취약 단원 없음 (완벽함!)";
             }
             else if (percentage >= 90) {
                 if (weakText === "취약 단원 없음") {
-                    method = `전체적인 개념 이해도가 매우 우수합니다. 간혹 발생한 실수를 점검하고, 고난도 심화 문제를 집중적으로 풀어보며 100점을 향한 훈련을 진행하세요.`;
+                    method = `전체적인 개념 이해도가 매우 우수합니다. 간혹 발생한 실수를 점검하고, 고난도 심화 문제를 집중적으로 풀어보며 100점을 향한 훈련을 진행하세요. ${evaluationAdvice}`;
                     weakText = "전반적으로 우수함";
                 } else {
-                    method = `전체적인 개념 이해도가 매우 우수합니다. 성취도가 다소 부족한 단원(${weakText})을 보완하고, 고난도 심화 문제를 집중적으로 풀어보세요.`;
+                    method = `전체적인 개념 이해도가 매우 우수합니다. 성취도가 다소 부족한 단원(${weakText})을 보완하고, 고난도 심화 문제를 집중적으로 풀어보세요. ${evaluationAdvice}`;
                 }
             }
             else if (percentage >= 70) {
                 if (weakText === "취약 단원 없음") {
-                    method = `기본적인 개념은 잘 잡혀 있습니다. 틀린 문제들의 오답 노트를 작성하고 기본 예제를 다시 한 번 풀어보며 실수를 줄여보세요.`;
+                    method = `기본적인 개념은 잘 잡혀 있습니다. 틀린 문제들의 오답 노트를 작성하고 기본 예제를 다시 한 번 풀어보며 실수를 줄여보세요. ${evaluationAdvice}`;
                     weakText = "전반적으로 양호함";
                 } else {
-                    method = `기본적인 개념은 잘 잡혀 있으나 특정 단원(${weakText})에서 오답이 발생하고 있습니다. 해당 단원의 오답 노트를 작성하고 기본 예제를 다시 한 번 풀어보며 구멍을 메워주세요.`;
+                    method = `기본적인 개념은 잘 잡혀 있으나 특정 단원(${weakText})에서 오답이 발생하고 있습니다. 해당 단원의 오답 노트를 작성하고 기본 예제를 다시 한 번 풀어보며 구멍을 메워주세요. ${evaluationAdvice}`;
                 }
             }
             else {
                 if (weakText === "취약 단원 없음") {
-                    method = `전반적인 기초 개념 다지기가 우선되어야 합니다. 교과서 위주의 기본 문제를 반복해서 풀며 원리를 정확히 이해하는 학습이 필요합니다.`;
+                    method = `전반적인 기초 개념 다지기가 우선되어야 합니다. 교과서 위주의 기본 문제를 반복해서 풀며 원리를 정확히 이해하는 학습이 필요합니다. ${evaluationAdvice}`;
                 } else {
-                    method = `전반적인 기초 개념 다지기가 우선되어야 합니다. 특히 취약한 단원(${weakText})을 중심으로 교과서 위주의 기본 문제를 반복해서 풀며 원리를 정확히 이해하는 학습이 필요합니다.`;
+                    method = `특히 취약한 단원(${weakText})에 대한 기본 개념 학습이 우선되어야 합니다. ${evaluationAdvice}`;
                 }
             }
 
-            return { strong: strongText, weak: weakText, method };
+            return { strong: strongText, weak: weakText, method: method };
         };
 
         const comments = generateAIComment();
 
-        // === 광고 없는 초소형 단축 링크 (is.gd) 기반 복사 로직 ===
         const handleCopyLink = async () => {
             if (!analysisData) {
                 alert("데이터 분석이 완료되지 않았습니다.");
@@ -853,7 +856,6 @@
             const reportUrl = `${baseUrl}?report=${encoded}`;
             let finalUrl = reportUrl;
 
-            // 광고가 없고 아주 깔끔한 is.gd 단축 URL 서비스를 JSONP 방식으로 호출하여 CORS 회피
             try {
                 finalUrl = await new Promise((resolve, reject) => {
                     const callbackName = 'isgd_callback_' + Math.floor(Math.random() * 100000);
@@ -877,7 +879,6 @@
                     };
                     document.body.appendChild(script);
                     
-                    // 3초 내에 응답 없으면 원본 압축 링크로 진행
                     setTimeout(() => {
                         if(window[callbackName]) reject(new Error("타임아웃"));
                     }, 3000);
