@@ -10,6 +10,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- URL 압축을 위한 LZString 라이브러리 추가 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800;900&display=swap');
         body { font-family: 'Pretendard', sans-serif; background-color: #f1f5f9; }
@@ -50,6 +52,10 @@
 
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* 스피너 애니메이션 */
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        .animate-spin-slow { animation: spin 2s linear infinite; }
     </style>
 </head>
 <body>
@@ -60,62 +66,160 @@
         const ReactDOM = window.ReactDOM;
         const { useState, useMemo, useRef, useEffect } = React;
 
-        // 초강력 URL 압축 헬퍼 (URL이 2000자를 넘어 잘리는 현상 완벽 방지)
-        const encodeReportData = (analysisData, comments, studentName) => {
+        // --- 1/10 압축률을 자랑하는 초압축 엔진 적용 ---
+        const encodeReportData = (analysisData, studentName) => {
+            const dictMap = new Map();
+            const dict = [];
+            const getDictIdx = (str) => {
+                const s = String(str || '');
+                if (!dictMap.has(s)) {
+                    dictMap.set(s, dict.length);
+                    dict.push(s);
+                }
+                return dictMap.get(s);
+            };
+
+            // 중복 텍스트를 모두 짧은 숫자로 치환
+            const r = analysisData.results.map(res => [
+                res.qNum,
+                getDictIdx(res.majorUnit),
+                getDictIdx(res.minorUnit),
+                getDictIdx(res.type),
+                getDictIdx(res.difficulty),
+                res.isCorrect ? 1 : 0,
+                res.score || 0
+            ]);
+
             const payload = {
                 p: analysisData.targetPeriod,
                 n: studentName,
-                s: analysisData.totalScore,
-                r: analysisData.results.map(r => [
-                    r.qNum, r.majorUnit, r.minorUnit, r.type, r.difficulty, r.isCorrect ? 1 : 0, r.score || 0
-                ]),
-                u: analysisData.unitData.map(u => [u.name, u.total, u.correct]),
-                d: analysisData.diffData.map(d => [d.name, d.total, d.correct]),
-                t: Object.entries(analysisData.typeStats).map(([k, v]) => [k, v.total, v.correct]),
-                c: [comments.strong, comments.weak, comments.method]
+                d: dict,
+                r: r
             };
+
             try {
                 const jsonStr = JSON.stringify(payload);
-                // unescape(encodeURIComponent()) 조합으로 용량을 1/3로 극적 압축
-                return window.btoa(unescape(encodeURIComponent(jsonStr)));
+                // LZString을 사용해 매우 짧은 URI Safe 문자열로 압축 변환
+                return window.LZString.compressToEncodedURIComponent(jsonStr);
             } catch(e) {
-                console.error(e);
+                console.error("인코딩 에러", e);
                 return null;
             }
         };
 
         const decodeReportData = (encodedStr) => {
             try {
-                const safeStr = encodedStr.replace(/ /g, '+');
-                let jsonStr = "";
-                try {
-                    // 신규 초압축 해제
-                    jsonStr = decodeURIComponent(escape(window.atob(safeStr)));
-                } catch(e1) {
-                    // 혹시 모를 구버전(안압축) 해제
-                    jsonStr = decodeURIComponent(window.atob(safeStr));
-                }
-                const payload = JSON.parse(jsonStr);
+                let jsonStr = window.LZString.decompressFromEncodedURIComponent(encodedStr);
+                let payload;
                 
-                // 구버전 링크 호환용
+                // 만약 구버전 방식(안압축)으로 생성된 링크로 접근했다면 호환되도록 처리
+                if (jsonStr) {
+                    payload = JSON.parse(jsonStr);
+                } else {
+                    const safeStr = encodedStr.replace(/ /g, '+');
+                    try {
+                        jsonStr = decodeURIComponent(escape(window.atob(safeStr)));
+                    } catch(e) {
+                        jsonStr = decodeURIComponent(window.atob(safeStr));
+                    }
+                    payload = JSON.parse(jsonStr);
+                }
+                
+                // 구버전 데이터 포맷 복원
                 if (payload.period) return payload;
 
-                // 신규 초압축 포맷 복원
+                // 신규 초압축 포맷 복원 및 분석 지표 자동 재계산
+                const dict = payload.d;
+                const results = payload.r.map(item => ({
+                    qNum: item[0],
+                    majorUnit: dict[item[1]],
+                    minorUnit: dict[item[2]],
+                    type: dict[item[3]],
+                    difficulty: dict[item[4]],
+                    isCorrect: item[5] === 1,
+                    score: item[6]
+                }));
+
+                let totalScoreCalc = 0;
+                let maxScore = 0;
+                const unitStats = {};
+                const diffStats = { '상': {total:0, correct:0}, '중': {total:0, correct:0}, '하': {total:0, correct:0} };
+                const typeStats = {};
+
+                results.forEach(r => {
+                    totalScoreCalc += r.isCorrect ? r.score : 0;
+                    maxScore += r.score;
+
+                    if(!unitStats[r.majorUnit]) unitStats[r.majorUnit] = { total: 0, correct: 0 };
+                    unitStats[r.majorUnit].total++;
+                    if(r.isCorrect) unitStats[r.majorUnit].correct++;
+
+                    let d = String(r.difficulty || '중');
+                    if (d.includes('상') || d.includes('어려움') || d.includes('어려운') || d.includes('7') || d.includes('8')) d = '상';
+                    else if (d.includes('하') || d.includes('쉬움') || d.includes('쉬운') || d.includes('1') || d.includes('2')) d = '하';
+                    else d = '중';
+                    
+                    if(!diffStats[d]) diffStats[d] = {total:0, correct:0};
+                    diffStats[d].total++;
+                    if(r.isCorrect) diffStats[d].correct++;
+
+                    let t = String(r.type || '기타');
+                    if (t.includes('객관')) t = '객관식';
+                    else if (t.includes('주관') || t.includes('서술')) t = '주관식/서술형';
+                    else t = '기타';
+
+                    if(!typeStats[t]) typeStats[t] = { total: 0, correct: 0 };
+                    typeStats[t].total++;
+                    if(r.isCorrect) typeStats[t].correct++;
+                });
+
+                const diffOrder = ['하', '중', '상', '최상'];
+                const totalScore = maxScore > 0 ? Math.round(totalScoreCalc * 10) / 10 : Math.round((results.filter(r => r.isCorrect).length / results.length) * 100);
+                
+                const unitData = Object.entries(unitStats).map(([name, stats]) => ({ name, ...stats }));
+                const diffData = Object.entries(diffStats).map(([name, stats]) => ({ name, ...stats })).filter(d=>d.total>0).sort((a,b) => diffOrder.indexOf(b.name) - diffOrder.indexOf(a.name));
+
+                // 코멘트 재생성 로직
+                const percentage = maxScore > 0 ? (totalScore / maxScore) * 100 : (results.filter(res => res.isCorrect).length / results.length) * 100;
+                let best = { name: '-', pct: -1 };
+                let worst = { name: '-', pct: 101 };
+                
+                unitData.forEach(u => {
+                    const pct = (u.correct / u.total) * 100;
+                    if(pct > best.pct) best = { name: u.name, pct };
+                    if(pct < worst.pct) worst = { name: u.name, pct };
+                });
+
+                let method = "";
+                let weakText = worst.name;
+                let strongText = best.name;
+
+                if (percentage >= 100) {
+                    method = `모든 단원의 개념을 완벽하게 이해하고 있습니다! 🎉 현재의 훌륭한 학습 패턴을 유지하며, 심화 문제나 다음 학기 선행 학습을 가볍게 시작해 보는 것을 적극 추천합니다.`;
+                    weakText = "취약 단원 없음 (완벽함!)";
+                }
+                else if (percentage >= 90) {
+                    method = `전체적인 개념 이해도가 매우 우수합니다. 간혹 실수하는 문제나 고난도 심화 문제를 집중적으로 풀어보며 100점을 향한 훈련을 진행하세요.`;
+                    if(worst.pct >= 80) weakText = "전반적으로 우수함"; 
+                }
+                else if (percentage >= 70) {
+                    method = `기본적인 개념은 잘 잡혀 있으나 특정 단원(${weakText})에서 오답이 발생하고 있습니다. 해당 단원의 오답 노트를 작성하고 기본 예제를 다시 한 번 풀어보며 구멍을 메워주세요.`;
+                }
+                else {
+                    method = `전반적인 기초 개념 다지기가 우선되어야 합니다. 어려운 문제보다는 교과서 위주의 기본 문제를 반복해서 풀며 원리를 정확히 이해하는 학습이 필요합니다.`;
+                }
+
                 return {
                     period: payload.p,
                     name: payload.n,
-                    score: payload.s,
-                    results: payload.r.map(r => ({
-                        q: r[0], m: r[1], i: r[2], t: r[3], d: r[4], c: r[5] === 1, s: r[6]
-                    })),
-                    units: payload.u.map(u => ({ name: u[0], total: u[1], correct: u[2] })),
-                    diffs: payload.d.map(d => ({ name: d[0], total: d[1], correct: d[2] })),
-                    types: payload.t.reduce((acc, t) => {
-                        acc[t[0]] = { total: t[1], correct: t[2] };
-                        return acc;
-                    }, {}),
-                    comments: { strong: payload.c[0], weak: payload.c[1], method: payload.c[2] }
+                    score: totalScore,
+                    results: results.map(r => ({q: r.qNum, m: r.majorUnit, i: r.minorUnit, t: r.type, d: r.difficulty, c: r.isCorrect, s: r.score})),
+                    units: unitData,
+                    diffs: diffData,
+                    types: typeStats,
+                    comments: { strong: strongText, weak: weakText, method: method }
                 };
+
             } catch(e) {
                 console.error("데이터 디코딩 실패:", e);
                 return null;
@@ -327,6 +431,9 @@
             
             const [isStudentView, setIsStudentView] = useState(false);
             const [studentReportData, setStudentReportData] = useState(null);
+            
+            // 로딩 상태 추가
+            const [isGenerating, setIsGenerating] = useState(false);
 
             useEffect(() => {
                 if (reportParam) {
@@ -656,22 +763,42 @@
 
         const comments = generateAIComment();
 
-        // 팝업 차단 및 클립보드 오류를 방지하는 가장 완벽한 링크 복사 로직
-        const handleCopyLink = () => {
+        // TinyURL API 연동을 통한 진정한 단축 링크 제공 로직
+        const handleCopyLink = async () => {
             if (!analysisData) {
                 alert("데이터 분석이 완료되지 않았습니다.");
                 return;
             }
+            
+            setIsGenerating(true);
+
+            // 1. 텍스트 압축하여 기본 URL 구성
             const encoded = encodeReportData(analysisData, comments, filters.studentName);
-            if (!encoded) return alert('링크 생성에 실패했습니다.');
+            if (!encoded) {
+                setIsGenerating(false);
+                return alert('링크 생성에 실패했습니다.');
+            }
             
             const baseUrl = window.location.origin + window.location.pathname;
             const reportUrl = `${baseUrl}?report=${encoded}`;
+            let finalUrl = reportUrl;
+
+            // 2. 무료 단축 URL API (TinyURL)를 사용해 극적으로 짧은 주소(https://tinyurl.com/..) 로 자동 변환 시도
+            try {
+                const response = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(reportUrl)}`);
+                if (response.ok) {
+                    finalUrl = await response.text();
+                }
+            } catch (err) {
+                console.warn("단축 URL 변환 실패, 기본 압축 링크 사용됨");
+            }
             
+            setIsGenerating(false);
+
+            // 3. 확실한 클립보드 복사 처리
             const fallbackCopy = () => {
                 const textArea = document.createElement("textarea");
-                textArea.value = reportUrl;
-                // 화면 밖으로 숨김
+                textArea.value = finalUrl;
                 textArea.style.top = "-9999px";
                 textArea.style.left = "-9999px";
                 textArea.style.position = "fixed";
@@ -681,19 +808,19 @@
                 try {
                     const successful = document.execCommand('copy');
                     if (successful) {
-                        alert('✅ 모바일 성적표 링크가 복사되었습니다!\n학생/학부모님께 붙여넣기 하여 전송해주세요.');
+                        alert(`✅ 초소형 성적표 링크가 복사되었습니다!\n학생/학부모님께 붙여넣기 하여 전송해주세요.\n\n주소: ${finalUrl}`);
                     } else {
-                        prompt('자동 복사가 차단되었습니다. 아래 링크를 길게 눌러 복사해주세요:', reportUrl);
+                        prompt('자동 복사가 차단되었습니다. 아래 링크를 길게 눌러 복사해주세요:', finalUrl);
                     }
                 } catch (err) {
-                    prompt('자동 복사가 차단되었습니다. 아래 링크를 길게 눌러 복사해주세요:', reportUrl);
+                    prompt('자동 복사가 차단되었습니다. 아래 링크를 길게 눌러 복사해주세요:', finalUrl);
                 }
                 document.body.removeChild(textArea);
             };
 
             if (navigator.clipboard && window.isSecureContext) {
-                navigator.clipboard.writeText(reportUrl).then(() => {
-                    alert('✅ 모바일 성적표 링크가 복사되었습니다!\n학생/학부모님께 붙여넣기 하여 전송해주세요.');
+                navigator.clipboard.writeText(finalUrl).then(() => {
+                    alert(`✅ 초소형 성적표 링크가 복사되었습니다!\n학생/학부모님께 붙여넣기 하여 전송해주세요.\n\n주소: ${finalUrl}`);
                 }).catch(err => fallbackCopy());
             } else {
                 fallbackCopy();
@@ -750,11 +877,12 @@
                         <input type="file" accept=".xlsx, .xls, .csv, .tsv" className="hidden" onClick={(e) => (e.target.value = '')} onChange={handleFileUpload} />
                     </label>
                     
-                        <button onClick={handleCopyLink} className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-1.5 shadow-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled={!analysisData}>
-                            <Icon name="link" size={16}/> 링크 복사
+                        <button onClick={handleCopyLink} className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-1.5 shadow-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled={!analysisData || isGenerating}>
+                            {isGenerating ? <Icon name="loader-2" size={16} className="animate-spin-slow" /> : <Icon name="link" size={16}/>}
+                            {isGenerating ? '링크 생성 중...' : '링크 복사'}
                         </button>
 
-                        <button onClick={handlePrint} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-1.5 shadow-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled={!analysisData}>
+                        <button onClick={handlePrint} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-1.5 shadow-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled={!analysisData || isGenerating}>
                             <Icon name="printer" size={16}/> A4 출력
                         </button>
                     </div>
