@@ -445,21 +445,27 @@
                             <div className="bg-slate-50 border border-slate-100 rounded-2xl p-5 shadow-sm">
                                 <h3 className="font-black text-slate-800 mb-4 flex items-center gap-2 text-sm"><Icon name="sparkles" size={18} className="text-amber-500"/> 학습 종합 분석</h3>
                                 <div className="flex gap-3 mb-4">
-                                    <div className="flex-1 bg-white p-3 rounded-xl border border-emerald-100 text-center shadow-sm">
-                                        <span className="block text-[10px] text-slate-400 font-bold mb-1">강한 단원</span>
-                                        <span className="text-[13px] font-black text-slate-800 whitespace-normal break-keep leading-tight block">{data.comments.strong}</span>
+                                    <div className="flex-1 bg-white p-3 rounded-xl border border-emerald-100 flex items-start gap-3 shadow-sm">
+                                        <div className="bg-emerald-100 p-2 rounded-lg text-emerald-600 shrink-0"><Icon name="trending-up" size={18}/></div>
+                                        <div className="min-w-0 flex-1">
+                                            <p className="text-[10px] text-slate-400 font-bold mb-1">강한 단원</p>
+                                            <p className="text-[13px] font-black text-slate-800 whitespace-normal break-keep leading-snug">{data.comments.strong}</p>
+                                        </div>
                                     </div>
-                                    <div className="flex-1 bg-white p-3 rounded-xl border border-rose-100 text-center shadow-sm">
-                                        <span className="block text-[10px] text-slate-400 font-bold mb-1">
-                                            {data.comments.weak.includes('완벽함') || data.comments.weak.includes('우수함') || data.comments.weak.includes('양호함') ? '특이사항' : '보완 단원'}
-                                        </span>
-                                        <span className={`text-[13px] font-black whitespace-normal break-keep leading-tight block ${data.comments.weak.includes('완벽함') || data.comments.weak.includes('우수함') || data.comments.weak.includes('양호함') ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                            {data.comments.weak}
-                                        </span>
+                                    <div className="flex-1 bg-white p-3 rounded-xl border border-rose-100 flex items-start gap-3 shadow-sm">
+                                        <div className="bg-rose-100 p-2 rounded-lg text-rose-600 shrink-0"><Icon name="trending-down" size={18}/></div>
+                                        <div className="min-w-0 flex-1">
+                                            <p className="text-[10px] text-slate-400 font-bold mb-1">
+                                                {data.comments.weak.includes('완벽함') || data.comments.weak.includes('우수함') || data.comments.weak.includes('양호함') ? '특이사항' : '보완 단원'}
+                                            </p>
+                                            <p className={`text-[13px] font-black whitespace-normal break-keep leading-snug ${data.comments.weak.includes('완벽함') || data.comments.weak.includes('우수함') || data.comments.weak.includes('양호함') ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                {data.comments.weak}
+                                            </p>
+                                        </div>
                                     </div>
                                 </div>
                                 <p className="text-[13px] text-slate-600 leading-relaxed font-medium bg-white p-4 rounded-xl border border-slate-100 shadow-sm whitespace-pre-wrap">
-                                    <span className="font-bold text-indigo-600 mr-1 block mb-1">💡 전문 학습 가이드</span>{data.comments.method}
+                                    <span className="font-bold text-indigo-600 block mb-1">💡 전문 학습 가이드</span>{data.comments.method}
                                 </p>
                             </div>
 
@@ -1066,15 +1072,15 @@
                                             <div className="bg-white p-3 rounded-xl border border-emerald-100 flex items-start gap-3 shadow-sm">
                                                 <div className="bg-emerald-100 p-2 rounded-lg text-emerald-600 shrink-0"><Icon name="trending-up" size={18}/></div>
                                                 <div className="min-w-0 flex-1">
-                                                    <p className="text-[10px] text-slate-400 font-bold uppercase mb-1 tracking-tighter">Strong Points</p>
+                                                    <p className="text-[10px] text-slate-400 font-bold mb-1">강한 단원</p>
                                                     <p className="text-[13px] font-black text-slate-800 whitespace-normal break-keep leading-snug">{comments.strong}</p>
                                                 </div>
                                             </div>
                                             <div className="bg-white p-3 rounded-xl border border-rose-100 flex items-start gap-3 shadow-sm">
                                                 <div className="bg-rose-100 p-2 rounded-lg text-rose-600 shrink-0"><Icon name="trending-down" size={18}/></div>
                                                 <div className="min-w-0 flex-1">
-                                                    <p className="text-[10px] text-slate-400 font-bold uppercase mb-1 tracking-tighter">
-                                                        {comments.weak.includes('완벽함') || comments.weak.includes('양호함') ? 'Overall Status' : 'Weak Points'}
+                                                    <p className="text-[10px] text-slate-400 font-bold mb-1">
+                                                        {comments.weak.includes('완벽함') || comments.weak.includes('양호함') ? '특이사항' : '보완 단원'}
                                                     </p>
                                                     <p className={`text-[13px] font-black whitespace-normal break-keep leading-snug ${comments.weak.includes('완벽함') ? 'text-emerald-600' : 'text-slate-800'}`}>
                                                         {comments.weak}
@@ -1082,9 +1088,9 @@
                                                 </div>
                                             </div>
                                         </div>
-                                        <p className="text-[13.5px] text-slate-700 leading-relaxed font-medium bg-white p-4 rounded-xl border border-slate-100 shadow-sm whitespace-pre-wrap break-keep">
-                                            <span className="font-bold text-indigo-600 mr-1 block mb-1">💡 전문 학습 가이드</span>{comments.method}
-                                        </p>
+                                        <div className="text-[13.5px] text-slate-700 leading-relaxed font-medium bg-white p-4 rounded-xl border border-slate-100 shadow-sm whitespace-pre-wrap break-keep">
+                                            <span className="font-bold text-indigo-600 block mb-1">💡 전문 학습 가이드</span>{comments.method}
+                                        </div>
                                     </div>
                                 </div>
 
