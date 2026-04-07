@@ -189,7 +189,6 @@
                     const strongUnits = unitsWithPct.filter(u => u.pct === bestScore || u.pct >= 90).slice(0, 2);
                     strongText = strongUnits.map(u => u.name).join(', ');
 
-                    // 70% 이하인 단원만 보완 단원으로 엄격하게 분류
                     const weakCandidates = unitsWithPct.filter(u => u.pct <= 70).sort((a, b) => a.pct - b.pct);
                     if (weakCandidates.length > 0) {
                         weakText = weakCandidates.slice(0, 2).map(u => u.name).join(', ');
@@ -835,6 +834,7 @@
 
         const comments = generateAIComment();
 
+        // === 광고 없는 초소형 단축 링크 (is.gd) 기반 복사 로직 ===
         const handleCopyLink = async () => {
             if (!analysisData) {
                 alert("데이터 분석이 완료되지 않았습니다.");
@@ -853,13 +853,37 @@
             const reportUrl = `${baseUrl}?report=${encoded}`;
             let finalUrl = reportUrl;
 
+            // 광고가 없고 아주 깔끔한 is.gd 단축 URL 서비스를 JSONP 방식으로 호출하여 CORS 회피
             try {
-                const response = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(reportUrl)}`);
-                if (response.ok) {
-                    finalUrl = await response.text();
-                }
+                finalUrl = await new Promise((resolve, reject) => {
+                    const callbackName = 'isgd_callback_' + Math.floor(Math.random() * 100000);
+                    window[callbackName] = function(data) {
+                        delete window[callbackName];
+                        const script = document.getElementById(callbackName);
+                        if (script) script.remove();
+                        if (data && data.shorturl) {
+                            resolve(data.shorturl);
+                        } else {
+                            reject(new Error("URL 단축 실패"));
+                        }
+                    };
+                    const script = document.createElement('script');
+                    script.id = callbackName;
+                    script.src = `https://is.gd/create.php?format=json&url=${encodeURIComponent(reportUrl)}&callback=${callbackName}`;
+                    script.onerror = () => {
+                        delete window[callbackName];
+                        script.remove();
+                        reject(new Error("네트워크 오류"));
+                    };
+                    document.body.appendChild(script);
+                    
+                    // 3초 내에 응답 없으면 원본 압축 링크로 진행
+                    setTimeout(() => {
+                        if(window[callbackName]) reject(new Error("타임아웃"));
+                    }, 3000);
+                });
             } catch (err) {
-                console.warn("단축 URL 변환 실패, 기본 압축 링크 사용됨");
+                console.warn("단축 URL 변환 실패, 원본 압축 링크 사용됨", err);
             }
             
             setIsGenerating(false);
