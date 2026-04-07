@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>학생 성취도 분석 리포트</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800;900&display=swap');
+        body { font-family: 'Pretendard', sans-serif; background-color: #f1f5f9; }
+        
+        /* A4 사이즈 프리뷰 및 프린트 설정 (자동 높이 조절로 잘림 방지) */
+        .a4-page {
+            width: 210mm;
+            min-height: 297mm;
+            height: auto; 
+            background: white;
+            margin: 0 auto;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            padding: 20mm;
+            position: relative;
+            box-sizing: border-box;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+            overflow: visible; 
+        }
+
+        @media print {
+            body { background-color: white; margin: 0; padding: 0; }
+            .no-print { display: none !important; }
+            .a4-page {
+                box-shadow: none;
+                margin: 0;
+                padding: 10mm; 
+                border-radius: 0;
+                page-break-after: always;
+                min-height: auto;
+                height: auto !important; 
+                overflow: visible !important;
+            }
+            .a4-page:last-child { page-break-after: auto; }
+            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+            .break-inside-avoid { break-inside: avoid; page-break-inside: avoid; }
+        }
+
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+        const { useState, useMemo, useRef, useEffect } = window.React;
+
+        // URL 압축 헬퍼
+        const encodeReportData = (analysisData, comments, studentName) => {
+            const payload = {
+                period: analysisData.targetPeriod,
+                name: studentName,
+                score: analysisData.totalScore,
+                results: analysisData.results.map(r => ({
+                    q: r.qNum, m: r.majorUnit, i: r.minorUnit, t: r.type, d: r.difficulty, c: r.isCorrect, s: r.score
+                })),
+                units: analysisData.unitData,
+                diffs: analysisData.diffData,
+                types: analysisData.typeStats,
+                comments: comments
+            };
+            try {
+                const jsonStr = JSON.stringify(payload);
+                return window.btoa(unescape(encodeURIComponent(jsonStr)));
+            } catch(e) {
+                console.error(e);
+                return null;
+            }
+        };
+
+        const decodeReportData = (encodedStr) => {
+            try {
+                const jsonStr = decodeURIComponent(escape(window.atob(encodedStr)));
+                return JSON.parse(jsonStr);
+            } catch(e) {
+                console.error(e);
+                return null;
+            }
+        };
+
+        const Icon = ({ name, size = 20, className = "" }) => {
+            const iconRef = useRef(null);
+            useEffect(() => {
+                if (iconRef.current && window.lucide) {
+                    iconRef.current.innerHTML = ''; 
+                    const i = document.createElement('i');
+                    i.setAttribute('data-lucide', name);
+                    i.style.width = `${size}px`; i.style.height = `${size}px`;
+                    iconRef.current.appendChild(i);
+                    window.lucide.createIcons();
+                }
+            }, [name, size]);
+            return <span ref={iconRef} className={`inline-flex items-center justify-center ${className}`}></span>;
+        };
+
+        // --- SVG 차트 컴포넌트 ---
+        const DonutChart = ({ data, title }) => {
+            const total = data.reduce((sum, d) => sum + d.value, 0);
+            let cumulative = 0;
+            if (total === 0) return <div className="h-32 flex items-center justify-center text-slate-400">데이터 없음</div>;
+
+            return (
+                <div className="flex flex-col items-center bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex-1 min-w-[140px] max-w-[200px]">
+                    <h4 className="text-[13px] font-black text-slate-700 mb-3 bg-slate-50 px-3 py-1.5 rounded-full border border-slate-200 w-full text-center truncate">{title}</h4>
+                    <div className="relative flex items-center justify-center w-full">
+                        <svg viewBox="-1.2 -1.2 2.4 2.4" className="w-full h-full transform -rotate-90 drop-shadow-sm max-w-[90px] max-h-[90px]">
+                            {data.map((slice, i) => {
+                                const pct = slice.value / total;
+                                if (pct === 0) return null;
+                                const startX = Math.cos(2 * Math.PI * cumulative);
+                                const startY = Math.sin(2 * Math.PI * cumulative);
+                                cumulative += pct;
+                                const endX = Math.cos(2 * Math.PI * cumulative);
+                                const endY = Math.sin(2 * Math.PI * cumulative);
+                                const largeArc = pct > 0.5 ? 1 : 0;
+                                const path = pct === 1 
+                                    ? `M 1 0 A 1 1 0 1 1 -1 0 A 1 1 0 1 1 1 0` 
+                                    : `M ${startX} ${startY} A 1 1 0 ${largeArc} 1 ${endX} ${endY} L 0 0`;
+                                return <path key={i} d={path} fill={slice.color} stroke="#fff" strokeWidth="0.1" strokeLinejoin="round" />;
+                            })}
+                            <circle cx="0" cy="0" r="0.65" fill="#fff" />
+                            <text x="0" y="0.05" textAnchor="middle" dominantBaseline="middle" className="text-[0.45px] font-black fill-indigo-600" style={{transform: 'rotate(90deg)'}}>{Math.round((data[0]?.value/total)*100 || 0)}%</text>
+                        </svg>
+                    </div>
+                    <div className="flex flex-col gap-1.5 mt-4 w-full px-1">
+                        {data.map((d, i) => (
+                            <div key={i} className="flex items-center justify-between text-xs w-full">
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                    <span className="w-2.5 h-2.5 rounded-full shadow-sm" style={{ backgroundColor: d.color }}></span>
+                                    <span className="font-bold text-slate-600">{d.name}</span>
+                                </div>
+                                <span className="text-slate-500 font-bold shrink-0">{d.value}개</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        };
+
+        const HorizontalBarChart = ({ data, color }) => {
+            return (
+                <div className="flex flex-col gap-4 w-full">
+                    {data.map((item, i) => {
+                        const pct = item.total === 0 ? 0 : Math.round((item.correct / item.total) * 100);
+                        return (
+                            <div key={i} className="flex flex-col gap-1.5 w-full">
+                                <div className="flex justify-between items-end w-full">
+                                    <span className="text-[14px] font-bold text-slate-700 leading-tight flex-1 pr-2 whitespace-normal break-words">{item.name}</span>
+                                    <span className="text-xs text-slate-400 font-bold shrink-0">{item.correct}/{item.total}</span>
+                                </div>
+                                <div className="w-full h-4 bg-slate-100 rounded-full overflow-hidden flex relative shadow-inner">
+                                    <div className="h-full rounded-full flex items-center justify-end px-2" style={{ width: `${pct}%`, backgroundColor: color || '#4f46e5', transition: 'width 1s' }}>
+                                        {pct > 15 && <span className="text-[10px] text-white font-bold">{pct}%</span>}
+                                    </div>
+                                    {pct <= 15 && <span className="absolute left-2 top-1/2 transform -translate-y-1/2 text-[10px] text-slate-500 font-bold">{pct}%</span>}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            );
+        };
+
+        // --- 상세 정오표 컴포넌트 ---
+        const DetailRowItem = ({ r }) => {
+            const qNum = r.q !== undefined ? r.q : r.qNum;
+            const major = r.m !== undefined ? r.m : r.majorUnit;
+            const minor = r.i !== undefined ? r.i : r.minorUnit;
+            const type = r.t !== undefined ? r.t : r.type;
+            const diff = r.d !== undefined ? r.d : r.difficulty;
+            const score = r.s !== undefined ? r.s : r.score;
+            const isCorrect = r.c !== undefined ? r.c : r.isCorrect;
+
+            return (
+                <div className="flex items-start justify-between p-3.5 bg-white rounded-xl border border-slate-200 shadow-sm h-auto break-inside-avoid">
+                    <div className="flex items-start gap-3 w-full">
+                        <div className="mt-0.5 w-8 h-8 rounded-full bg-slate-100 text-slate-700 font-black flex items-center justify-center shrink-0 text-sm shadow-sm border border-slate-200">
+                            {qNum}
+                        </div>
+                        <div className="flex flex-col flex-1 min-w-0 pr-2">
+                            <span className="text-[14px] font-bold text-slate-800 mb-1.5 leading-snug break-words whitespace-normal">
+                                {major} <span className="text-slate-400 font-normal text-[12px] inline-block">| {minor}</span>
+                            </span>
+                            <div className="flex flex-wrap gap-1.5 text-[10px]">
+                                <span className="bg-slate-50 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200 font-bold whitespace-nowrap">{type}</span>
+                                <span className={`px-1.5 py-0.5 rounded font-bold border whitespace-nowrap ${diff==='상'?'text-rose-600 bg-rose-50 border-rose-100':(diff==='하'?'text-emerald-600 bg-emerald-50 border-emerald-100':'text-amber-600 bg-amber-50 border-amber-100')}`}>{diff}</span>
+                                {score > 0 && <span className="text-indigo-500 font-bold px-1.5 py-0.5 whitespace-nowrap">{score}점</span>}
+                            </div>
+                        </div>
+                        <div className="shrink-0 flex items-center justify-center ml-1 mt-0.5">
+                            {isCorrect ? 
+                                <div className="w-9 h-9 rounded-full border-2 border-emerald-500 text-emerald-500 flex items-center justify-center font-black text-[15px] bg-emerald-50">O</div> : 
+                                <div className="w-9 h-9 rounded-full border-2 border-rose-500 text-rose-500 flex items-center justify-center font-black text-[15px] bg-rose-50">X</div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- 모바일 전용 학생 뷰 ---
+        const StudentReportMobileView = ({ data }) => {
+            if (!data) return <div className="p-8 text-center h-screen flex items-center justify-center font-bold text-slate-500">데이터를 불러올 수 없습니다.</div>;
+
+            return (
+                <div className="min-h-screen bg-slate-100 md:py-8 font-sans">
+                    <div className="max-w-md mx-auto bg-white md:rounded-3xl shadow-2xl overflow-hidden min-h-screen md:min-h-0 pb-12">
+                        <div className="bg-indigo-600 p-6 pt-10 text-white text-center relative overflow-hidden">
+                            <div className="absolute opacity-10 -right-6 -top-6"><Icon name="award" size={150} /></div>
+                            <p className="text-indigo-200 font-bold text-xs tracking-widest mb-1 relative z-10">MATH REPORT</p>
+                            <h1 className="text-2xl font-black mb-6 relative z-10">{data.period} 수학 성취도</h1>
+                            
+                            <div className="bg-white/10 p-5 rounded-2xl backdrop-blur-sm relative z-10 flex flex-col items-center border border-white/20 shadow-lg">
+                                <span className="text-sm font-bold text-indigo-100 mb-1">{data.name} 학생 종합 점수</span>
+                                <div className="flex items-baseline gap-1">
+                                    <span className="text-6xl font-black tracking-tighter">{data.score}</span>
+                                    <span className="text-xl font-bold">점</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="p-5 space-y-8 mt-2">
+                            <div className="bg-slate-50 border border-slate-100 rounded-2xl p-5 shadow-sm">
+                                <h3 className="font-black text-slate-800 mb-4 flex items-center gap-2 text-sm"><Icon name="sparkles" className="text-amber-500" size={18}/> 학습 종합 분석</h3>
+                                <div className="flex gap-3 mb-4">
+                                    <div className="flex-1 bg-white p-3 rounded-xl border border-emerald-100 text-center shadow-sm">
+                                        <span className="block text-[10px] text-slate-400 font-bold mb-1">강한 단원</span>
+                                        <span className="text-[13px] font-black text-slate-800 whitespace-normal break-words leading-tight block">{data.comments.strong}</span>
+                                    </div>
+                                    <div className="flex-1 bg-white p-3 rounded-xl border border-rose-100 text-center shadow-sm">
+                                        <span className="block text-[10px] text-slate-400 font-bold mb-1">
+                                            {data.comments.weak.includes('완벽함') || data.comments.weak.includes('우수함') ? '특이사항' : '보완 단원'}
+                                        </span>
+                                        <span className={`text-[13px] font-black whitespace-normal break-words leading-tight block ${data.comments.weak.includes('완벽함') ? 'text-emerald-600' : 'text-slate-800'}`}>
+                                            {data.comments.weak}
+                                        </span>
+                                    </div>
+                                </div>
+                                <p className="text-[13px] text-slate-600 leading-relaxed font-medium bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+                                    <span className="font-bold text-indigo-600 mr-1 block mb-1">💡 학습 가이드</span>{data.comments.method}
+                                </p>
+                            </div>
+
+                            <div>
+                                <h3 className="font-black text-slate-800 mb-4 border-b-2 border-slate-100 pb-2 flex items-center gap-2 text-[15px]"><Icon name="bar-chart-2" className="text-indigo-500" size={18}/> 단원별 성취도</h3>
+                                <HorizontalBarChart data={data.units} color="#4f46e5" />
+                            </div>
+
+                            <div>
+                                <h3 className="font-black text-slate-800 mb-4 border-b-2 border-slate-100 pb-2 flex items-center gap-2 text-[15px]"><Icon name="layers" className="text-emerald-500" size={18}/> 난이도별 성취도</h3>
+                                <HorizontalBarChart data={data.diffs} color="#10b981" />
+                            </div>
+
+                            {data.types && Object.keys(data.types).length > 0 && (
+                                <div>
+                                    <h3 className="font-black text-slate-800 mb-4 border-b-2 border-slate-100 pb-2 flex items-center gap-2 text-[15px]"><Icon name="pie-chart" className="text-amber-500" size={18}/> 문제유형별 정답률</h3>
+                                    <div className="flex flex-wrap gap-4 justify-center w-full">
+                                        {Object.entries(data.types).map(([type, stats]) => (
+                                            <DonutChart key={type} data={[{name: '정답', value: stats.correct, color: '#4f46e5'}, {name: '오답', value: stats.total-stats.correct, color: '#e2e8f0'}]} title={type} />
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            <div>
+                                <h3 className="font-black text-slate-800 mb-4 border-b-2 border-slate-100 pb-2 flex items-center gap-2 text-[15px]"><Icon name="check-square" className="text-indigo-600" size={18}/> 상세 정오표</h3>
+                                <div className="grid grid-cols-1 gap-y-3 flex-1 items-start content-start">
+                                    {data.results.map((r, idx) => (
+                                        <DetailRowItem key={idx} r={r} />
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- 메인 앱 ---
+        function App() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const reportParam = urlParams.get('report');
+            
+            const [isStudentView, setIsStudentView] = useState(false);
+            const [studentReportData, setStudentReportData] = useState(null);
+
+            useEffect(() => {
+                if (reportParam) {
+                    const decoded = decodeReportData(reportParam);
+                    if (decoded) {
+                        setStudentReportData(decoded);
+                        setIsStudentView(true);
+                    } else {
+                        alert('유효하지 않은 링크이거나 손상된 데이터입니다.');
+                        window.history.replaceState({}, document.title, window.location.pathname);
+                    }
+                }
+            }, [reportParam]);
+
+            const [exams, setExams] = useState([]);
+            const [students, setStudents] = useState([]);
+            
+            const [filters, setFilters] = useState({
+                semester: '', 
+                examType: '', 
+                studentName: ''
+            });
+
+            const options = useMemo(() => {
+                const allPeriods = [...new Set(exams.map(e => e.period))]; 
+                const semesters = [...new Set(allPeriods.map(p => p.split(' ')[0]))].filter(Boolean).sort();
+                const examTypes = ['중간', '기말'];
+                
+                const targetPeriod = `${filters.semester} ${filters.examType}`.trim();
+                const availableStudents = [...new Set(students.filter(s => s.period === targetPeriod).map(s => s.name))].sort();
+
+                return { semesters, examTypes, students: availableStudents };
+            }, [exams, students, filters.semester, filters.examType]);
+
+            useEffect(() => {
+                if (!filters.semester && options.semesters.length > 0) setFilters(prev => ({ ...prev, semester: options.semesters[0] }));
+                if (!filters.examType && options.examTypes.length > 0) setFilters(prev => ({ ...prev, examType: '기말' }));
+            }, [options.semesters]);
+
+            const analysisData = useMemo(() => {
+                if (!filters.semester || !filters.examType || !filters.studentName) return null;
+                const targetPeriod = `${filters.semester} ${filters.examType}`;
+                
+                const targetExams = exams.filter(e => e.period === targetPeriod).sort((a,b) => a.qNum - b.qNum);
+                const targetStudent = students.find(s => s.name === filters.studentName && s.period === targetPeriod);
+                
+                if (targetExams.length === 0 || !targetStudent) return null;
+
+                let totalScoreCalc = 0;
+                const results = targetExams.map(ex => {
+                    const studentAns = targetStudent.responses[ex.qNum];
+                    const isCorrect = String(studentAns).trim().toUpperCase() === 'O' || String(studentAns).trim() === '정답';
+                    if (isCorrect) {
+                        totalScoreCalc += (ex.score || 0);
+                    }
+                    return { ...ex, isCorrect, studentAns };
+                });
+
+                const maxPossibleScore = targetExams.reduce((sum, ex) => sum + (ex.score || 0), 0);
+                const totalScore = maxPossibleScore > 0 
+                    ? Math.round(totalScoreCalc * 10) / 10 
+                    : Math.round((results.filter(r => r.isCorrect).length / results.length) * 100);
+
+                const unitStats = {};
+                results.forEach(r => {
+                    if(!unitStats[r.majorUnit]) unitStats[r.majorUnit] = { total: 0, correct: 0 };
+                    unitStats[r.majorUnit].total++;
+                    if(r.isCorrect) unitStats[r.majorUnit].correct++;
+                });
+                const unitData = Object.entries(unitStats).map(([name, stats]) => ({ name, ...stats }));
+
+                const diffOrder = ['하', '중', '상', '최상'];
+                const diffStats = { '상': {total:0, correct:0}, '중': {total:0, correct:0}, '하': {total:0, correct:0} };
+                results.forEach(r => {
+                    let d = String(r.difficulty || '중');
+                    if (d.includes('상') || d.includes('어려움') || d.includes('어려운') || d.includes('7') || d.includes('8')) d = '상';
+                    else if (d.includes('하') || d.includes('쉬움') || d.includes('쉬운') || d.includes('1') || d.includes('2')) d = '하';
+                    else d = '중';
+                    
+                    if(!diffStats[d]) diffStats[d] = {total:0, correct:0};
+                    diffStats[d].total++;
+                    if(r.isCorrect) diffStats[d].correct++;
+                });
+                const diffData = Object.entries(diffStats).map(([name, stats]) => ({ name, ...stats })).filter(d=>d.total>0).sort((a,b) => diffOrder.indexOf(b.name) - diffOrder.indexOf(a.name));
+
+                const typeStats = {};
+                results.forEach(r => {
+                    let t = String(r.type || '기타');
+                    if (t.includes('객관')) t = '객관식';
+                    else if (t.includes('주관') || t.includes('서술')) t = '주관식/서술형';
+                    else t = '기타';
+
+                    if(!typeStats[t]) typeStats[t] = { total: 0, correct: 0 };
+                    typeStats[t].total++;
+                    if(r.isCorrect) typeStats[t].correct++;
+                });
+
+                return { targetPeriod, results, totalScore, unitData, diffData, typeStats };
+        }, [exams, students, filters]);
+
+        const handleFileUpload = (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const processWorkbook = (workbook) => {
+                try {
+                    const json = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { defval: "" });
+                    if (json.length === 0) return alert("데이터가 비어있습니다.");
+
+                    const keys = Object.keys(json[0]).map(k => String(k).trim()).join(',');
+                    
+                    if (keys.includes('단원') || keys.includes('난이도') || keys.includes('출제시기')) {
+                        const parsedExams = json.map(row => {
+                            const getVal = (keywords) => {
+                                const key = Object.keys(row).find(k => keywords.some(kw => String(k).includes(kw)));
+                                return key ? String(row[key]).trim() : '';
+                            };
+                            
+                            const rawPeriod = getVal(['출제시기', '시기']); 
+                            const rawGrade = getVal(['학년']); 
+                            
+                            let gMatch = rawGrade.match(/\d/);
+                            let gradeStr = gMatch ? gMatch[0] : '';
+                            
+                            let tMatch = rawPeriod.match(/(\d)\s*학기/);
+                            let termStr = tMatch ? tMatch[1] : '';
+                            
+                            let semesterStr = (gradeStr && termStr) ? `${gradeStr}-${termStr}` : getVal(['학년학기']);
+                            let examStr = rawPeriod.includes('중간') ? '중간' : (rawPeriod.includes('기말') ? '기말' : '');
+                            
+                            return {
+                                period: `${semesterStr} ${examStr}`.trim(),
+                                school: getVal(['학교명', '학교']),
+                                qNum: parseInt(getVal(['문항번호', '번호', '문항'])) || 0,
+                                type: getVal(['문항유형', '유형', '형태']),
+                                difficulty: getVal(['난이도', '수준']),
+                                majorUnit: getVal(['대단원']),
+                                minorUnit: getVal(['소단원']),
+                                score: parseFloat(getVal(['배점', '점수'])) || 0
+                            };
+                        }).filter(e => e.qNum > 0);
+                        
+                        setExams(prev => [...prev.filter(p => !parsedExams.some(n => n.period === p.period)), ...parsedExams]);
+                        alert(`✅ ${parsedExams.length}건의 시험 문항 정보가 업로드 되었습니다.\n(인식된 시기: ${parsedExams[0]?.period})`);
+                    } 
+                    else if (keys.includes('문제') && (keys.includes('정답') || keys.includes('점수'))) {
+                        const fallbackPeriod = exams.length > 0 ? exams[0].period : '';
+                        let studentName = "학생";
+                        let finalPeriod = fallbackPeriod;
+
+                        const fileName = file.name.replace(/\.[^/.]+$/, "").trim();
+                        if (fileName.includes('_')) {
+                            studentName = fileName.split('_')[0].trim();
+                            const restStr = fileName.split('_')[1];
+                            
+                            let sMatch = restStr.match(/(\d)[^\d]*(\d)/); 
+                            let semesterStr = sMatch ? `${sMatch[1]}-${sMatch[2]}` : "";
+                            let examStr = restStr.includes('중간') ? '중간' : (restStr.includes('기말') ? '기말' : '');
+                            
+                            if (semesterStr && examStr) finalPeriod = `${semesterStr} ${examStr}`;
+                            else if (semesterStr) finalPeriod = semesterStr;
+                        } else {
+                            studentName = fileName;
+                        }
+
+                        if (!finalPeriod || finalPeriod === '기말' || finalPeriod === '중간' || finalPeriod === '-') {
+                            finalPeriod = fallbackPeriod;
+                        }
+
+                        const responses = {};
+                        json.forEach(row => {
+                            const getVal = (keywords) => {
+                                const key = Object.keys(row).find(k => keywords.some(kw => String(k).includes(kw)));
+                                return key ? String(row[key]).trim() : '';
+                            };
+                            const qNumStr = getVal(['문제', '문항']).replace(/[^0-9]/g, '');
+                            if (qNumStr) {
+                                const qNum = parseInt(qNumStr);
+                                const score = parseFloat(getVal(['점수'])) || 0;
+                                responses[qNum] = score > 0 ? 'O' : 'X';
+                            }
+                        });
+
+                        const parsedStudents = [{ name: studentName, period: finalPeriod, responses }];
+                        setStudents(prev => [...prev.filter(p => !(p.name === studentName && p.period === finalPeriod)), ...parsedStudents]);
+                        alert(`✅ ${studentName} 학생 데이터가 업로드 되었습니다.\n(인식된 시기: ${finalPeriod})`);
+                    }
+                    else if (keys.includes('이름') || keys.includes('학생') || keys.includes('성명') || (keys.includes('1') && keys.includes('2'))) {
+                        const fallbackPeriod = exams.length > 0 ? exams[0].period : '';
+
+                        const parsedStudents = json.map(row => {
+                            const getVal = (keywords) => {
+                                const key = Object.keys(row).find(k => keywords.some(kw => String(k).includes(kw)));
+                                return key ? String(row[key]).trim() : '';
+                            };
+                            
+                            const name = getVal(['이름', '학생', '성명']);
+                            
+                            const rawPeriod = getVal(['시험시기', '시기', '학년학기', '출제시기']); 
+                            let sMatch = rawPeriod.match(/(\d)[^\d]*(\d)/); 
+                            let semesterStr = sMatch ? `${sMatch[1]}-${sMatch[2]}` : rawPeriod;
+                            
+                            let fullRowText = Object.values(row).join(' ');
+                            let examStr = fullRowText.includes('중간') ? '중간' : (fullRowText.includes('기말') ? '기말' : '');
+                            
+                            let finalPeriod = semesterStr;
+                            if (examStr && !finalPeriod.includes(examStr)) {
+                                finalPeriod = `${semesterStr} ${examStr}`.trim();
+                            }
+                            finalPeriod = finalPeriod.replace(/(\d-\d)([^\s])/, '$1 $2').trim();
+
+                            if (!finalPeriod || finalPeriod === '기말' || finalPeriod === '중간' || finalPeriod === '-') {
+                                finalPeriod = fallbackPeriod;
+                            }
+                            
+                            const responses = {};
+                            Object.keys(row).forEach(k => {
+                                const qNumStr = String(k).replace(/[^0-9]/g, '');
+                                if (qNumStr) {
+                                    const qNum = parseInt(qNumStr);
+                                    if (qNum > 0 && qNum <= 100) {
+                                        responses[qNum] = String(row[k]).trim().toUpperCase();
+                                    }
+                                }
+                            });
+
+                            return { name, period: finalPeriod, responses };
+                        }).filter(s => s.name);
+                        
+                        if (parsedStudents.length > 0) {
+                            setStudents(prev => [...prev.filter(p => !parsedStudents.some(n => n.name === p.name && n.period === p.period)), ...parsedStudents]);
+                            alert(`✅ ${parsedStudents.length}명의 학생 데이터가 업로드 되었습니다.\n(인식된 시기: ${parsedStudents[0]?.period})`);
+                        } else {
+                            alert("❌ 학생 데이터를 찾을 수 없습니다.\n파일의 첫 줄(헤더)에 '이름'이나 '성명'이라는 글자가 있는지 확인해주세요.");
+                        }
+                    } else {
+                        alert(`❌ 파일 양식을 인식하지 못했습니다.\n\n[발견된 열 이름들: ${keys}]\n\n* 시험지 엑셀은 '대단원', '난이도' 등이 있어야 합니다.\n* 학생 CSV 파일은 '이름' 열과 '1', '2' 같은 문항 번호 열이 있어야 합니다.`);
+                    }
+                } catch (err) {
+                    alert("데이터 처리 중 오류가 발생했습니다.");
+                    console.error(err);
+                }
+            };
+
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                try {
+                    const buffer = evt.target.result;
+                    let workbook;
+
+                    if (file.name.toLowerCase().endsWith('.csv') || file.name.toLowerCase().endsWith('.tsv')) {
+                        const uint8Array = new Uint8Array(buffer);
+                        let decodedText = "";
+                        try {
+                            decodedText = new TextDecoder('utf-8', { fatal: true }).decode(uint8Array);
+                        } catch (decodeErr) {
+                            decodedText = new TextDecoder('euc-kr').decode(uint8Array);
+                        }
+                        
+                        if (decodedText.includes('\t')) {
+                            const lines = decodedText.split(/\r?\n/).filter(l => l.trim() !== '');
+                            if(lines.length > 0) {
+                                const headers = lines[0].split('\t').map(h => h.trim());
+                                const json = [];
+                                for(let i=1; i<lines.length; i++){
+                                    const cols = lines[i].split('\t');
+                                    const rowObj = {};
+                                    headers.forEach((h, idx) => rowObj[h] = cols[idx] ? cols[idx].trim() : '');
+                                    json.push(rowObj);
+                                }
+                                processWorkbook({ Sheets: { Sheet1: XLSX.utils.json_to_sheet(json) }, SheetNames: ['Sheet1'] });
+                                return;
+                            }
+                        }
+
+                        workbook = XLSX.read(decodedText, { type: 'string' });
+                    } else {
+                        workbook = XLSX.read(new Uint8Array(buffer), { type: 'array' });
+                    }
+                    
+                    processWorkbook(workbook);
+                } catch (err) {
+                    alert("파일을 읽는 중 오류가 발생했습니다.");
+                    console.error(err);
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        };
+
+        const generateAIComment = () => {
+            if (!analysisData) return {};
+            const { unitData, totalScore, results } = analysisData;
+            
+            const maxScore = results.reduce((acc, r) => acc + (r.score || r.s || 0), 0);
+            const percentage = maxScore > 0 ? (totalScore / maxScore) * 100 : (results.filter(r => r.isCorrect).length / results.length) * 100;
+            
+            let best = { name: '-', pct: -1 };
+            let worst = { name: '-', pct: 101 };
+            
+            unitData.forEach(u => {
+                const pct = (u.correct / u.total) * 100;
+                if(pct > best.pct) best = { name: u.name, pct };
+                if(pct < worst.pct) worst = { name: u.name, pct };
+            });
+
+            let method = "";
+            let weakText = worst.name;
+            let strongText = best.name;
+
+            if (percentage >= 100) {
+                method = `모든 단원의 개념을 완벽하게 이해하고 있습니다! 🎉 현재의 훌륭한 학습 패턴을 유지하며, 심화 문제나 다음 학기 선행 학습을 가볍게 시작해 보는 것을 적극 추천합니다.`;
+                weakText = "취약 단원 없음 (완벽함!)";
+            }
+            else if (percentage >= 90) {
+                method = `전체적인 개념 이해도가 매우 우수합니다. 간혹 실수하는 문제나 고난도 심화 문제를 집중적으로 풀어보며 100점을 향한 훈련을 진행하세요.`;
+                if(worst.pct >= 80) weakText = "전반적으로 우수함"; 
+            }
+            else if (percentage >= 70) {
+                method = `기본적인 개념은 잘 잡혀 있으나 특정 단원(${weakText})에서 오답이 발생하고 있습니다. 해당 단원의 오답 노트를 작성하고 기본 예제를 다시 한 번 풀어보며 구멍을 메워주세요.`;
+            }
+            else {
+                method = `전반적인 기초 개념 다지기가 우선되어야 합니다. 어려운 문제보다는 교과서 위주의 기본 문제를 반복해서 풀며 원리를 정확히 이해하는 학습이 필요합니다.`;
+            }
+
+            return { strong: strongText, weak: weakText, method };
+        };
+
+        const comments = generateAIComment();
+
+        const handleCopyLink = () => {
+            const encoded = encodeReportData(analysisData, comments, filters.studentName);
+            if (!encoded) return alert('링크 생성에 실패했습니다.');
+            
+            const baseUrl = window.location.origin + window.location.pathname;
+            const reportUrl = `${baseUrl}?report=${encoded}`;
+            
+            const textarea = document.createElement('textarea');
+            textarea.value = reportUrl;
+            textarea.style.position = 'fixed';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.select();
+            
+            try {
+                const successful = document.execCommand('copy');
+                if (successful) {
+                    alert('✅ 모바일 성적표 링크가 복사되었습니다!\n학생/학부모님께 문자나 카카오톡으로 붙여넣기 하여 전송해주세요.');
+                } else {
+                    alert('자동 복사가 차단되었습니다.\n아래 링크를 직접 복사해주세요.\n\n' + reportUrl);
+                }
+            } catch (err) {
+                alert('자동 복사가 차단되었습니다.\n아래 링크를 직접 복사해주세요.\n\n' + reportUrl);
+            }
+            
+            document.body.removeChild(textarea);
+        };
+
+        const handlePrint = () => {
+            try {
+                window.print();
+            } catch(e) {
+                alert("이 환경에서는 인쇄 기능을 직접 실행할 수 없습니다.\n키보드 단축키(Ctrl+P 또는 Cmd+P)를 이용해주세요.");
+            }
+        };
+
+        if (isStudentView) {
+            return <StudentReportMobileView data={studentReportData} />;
+        }
+
+        return (
+            <div className="min-h-screen pb-12">
+                <div className="bg-white border-b shadow-sm p-4 sticky top-0 z-50 no-print flex flex-wrap gap-4 items-center justify-between">
+                    <div className="flex items-center gap-6">
+                        <h1 className="text-xl font-black text-indigo-900 flex items-center gap-2">
+                            <Icon name="graduation-cap" className="text-indigo-600"/>
+                            학생 성취도 분석
+                        </h1>
+                        
+                        <div className="flex gap-2 bg-slate-50 p-1.5 rounded-lg border">
+                            <select className="px-3 py-1.5 bg-white border rounded text-sm font-bold text-slate-700 outline-none" 
+                                    value={filters.semester} onChange={e => setFilters(p => ({...p, semester: e.target.value, studentName: ''}))}>
+                                <option value="">학년학기 선택</option>
+                                {options.semesters.map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                            <select className="px-3 py-1.5 bg-white border rounded text-sm font-bold text-slate-700 outline-none"
+                                    value={filters.examType} onChange={e => setFilters(p => ({...p, examType: e.target.value, studentName: ''}))}>
+                                <option value="">시험 시기</option>
+                                {options.examTypes.map(s => <option key={s} value={s}>{s}고사</option>)}
+                            </select>
+                            <select className="px-3 py-1.5 bg-white border rounded text-sm font-bold text-indigo-700 outline-none min-w-[120px]"
+                                    value={filters.studentName} onChange={e => setFilters(p => ({...p, studentName: e.target.value}))}>
+                                <option value="">학생 이름 선택</option>
+                                {options.students.map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                    <label className="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-1.5 transition-colors border">
+                        <Icon name="file-up" size={16}/> 데이터 업로드
+                        <input type="file" accept=".xlsx, .xls, .csv" className="hidden" onClick={(e) => (e.target.value = '')} onChange={handleFileUpload} />
+                    </label>
+                    
+                        <button onClick={handleCopyLink} className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-1.5 shadow-md transition-colors disabled:opacity-50" disabled={!analysisData}>
+                            <Icon name="link" size={16}/> 링크 복사
+                        </button>
+
+                        <button onClick={handlePrint} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-1.5 shadow-md transition-colors disabled:opacity-50" disabled={!analysisData}>
+                            <Icon name="printer" size={16}/> A4 출력
+                        </button>
+                    </div>
+                </div>
+
+                {!analysisData && (
+                    <div className="mt-20 flex flex-col items-center justify-center text-slate-400 no-print">
+                        <Icon name="clipboard-list" size={64} className="mb-4 text-slate-300" />
+                        <h2 className="text-xl font-bold mb-2">데이터를 업로드하고 학생을 선택해주세요.</h2>
+                        <p className="text-sm text-center">
+                            학생을 선택한 후 <strong>[링크 복사]</strong>를 누르면 학부모 발송용 링크가 생성됩니다.<br/>
+                            <strong>[A4 출력]</strong>을 누르면 종이 성적표를 인쇄할 수 있습니다.
+                        </p>
+                    </div>
+                )}
+
+                {analysisData && (
+                    <div className="pt-8 no-print:bg-slate-100">
+                        {/* --- Page 1: 종합 성취도 --- */}
+                        <div className="a4-page bg-white">
+                            <div className="border-b-4 border-indigo-900 pb-6 mb-8 flex justify-between items-end">
+                                <div>
+                                    <div className="text-indigo-600 font-black tracking-widest mb-1 text-sm">MATH ACHIEVEMENT REPORT</div>
+                                    <h1 className="text-4xl font-black text-slate-900">{analysisData.targetPeriod} 수학 성취도 리포트</h1>
+                                </div>
+                                <div className="text-right flex items-center gap-4">
+                                    <div>
+                                        <p className="text-sm text-slate-500 font-bold mb-1">Student Name</p>
+                                        <p className="text-2xl font-black text-slate-800 bg-indigo-50 px-4 py-1 rounded-lg">{filters.studentName}</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex gap-6 mb-10">
+                                <div className="w-1/3 bg-indigo-600 rounded-2xl p-6 text-white flex flex-col justify-center items-center relative overflow-hidden shadow-xl">
+                                    <div className="absolute -right-4 -top-4 opacity-10"><Icon name="target" size={120}/></div>
+                                    <span className="text-indigo-200 font-bold mb-2 z-10">종합 점수</span>
+                                    <div className="flex items-baseline gap-1 z-10">
+                                        <span className="text-6xl font-black tracking-tighter">{analysisData.totalScore}</span>
+                                        <span className="text-2xl font-bold">점</span>
+                                    </div>
+                                    <div className="mt-4 bg-indigo-800/50 px-4 py-1.5 rounded-full text-sm font-bold z-10">
+                                        {analysisData.results.filter(r=>r.isCorrect).length} / {analysisData.results.length} 문항 정답
+                                    </div>
+                                </div>
+
+                                <div className="w-2/3 bg-slate-50 rounded-2xl border border-slate-200 p-6 flex flex-col justify-center shadow-sm">
+                                    <h3 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2"><Icon name="sparkles" className="text-amber-500"/> 학습 종합 분석</h3>
+                                    <div className="grid grid-cols-2 gap-4 mb-4">
+                                        <div className="bg-white p-3 rounded-xl border border-emerald-100 flex items-center gap-3">
+                                            <div className="bg-emerald-100 p-2 rounded-lg text-emerald-600"><Icon name="trending-up"/></div>
+                                            <div><p className="text-xs text-slate-500 font-bold">강한 단원</p><p className="text-[14px] font-black text-slate-800 whitespace-normal break-words leading-tight">{comments.strong}</p></div>
+                                        </div>
+                                        <div className="bg-white p-3 rounded-xl border border-rose-100 flex items-center gap-3">
+                                            <div className="bg-rose-100 p-2 rounded-lg text-rose-600"><Icon name="trending-down"/></div>
+                                            <div>
+                                                <p className="text-xs text-slate-500 font-bold">
+                                                    {comments.weak.includes('완벽함') || comments.weak.includes('우수함') ? '특이사항' : '보완 단원'}
+                                                </p>
+                                                <p className={`text-[14px] font-black whitespace-normal break-words leading-tight ${comments.weak.includes('완벽함') ? 'text-emerald-600' : 'text-slate-800'}`}>
+                                                    {comments.weak}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <p className="text-[13px] text-slate-700 leading-relaxed font-medium bg-white p-3 rounded-xl border">
+                                        <span className="font-bold text-indigo-600 mr-1">💡 학습 가이드:</span>
+                                        {comments.method}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-8 mb-8">
+                                <div className="col-span-1 border-r border-slate-100 pr-8">
+                                    <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2 border-b pb-2"><Icon name="bar-chart-2" className="text-indigo-500"/> 단원별 성취도</h3>
+                                    <HorizontalBarChart data={analysisData.unitData} color="#4f46e5" />
+                                </div>
+                                
+                                <div className="col-span-1 flex flex-col gap-8">
+                                    <div>
+                                        <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2 border-b pb-2"><Icon name="layers" className="text-emerald-500"/> 난이도별 성취도</h3>
+                                        <HorizontalBarChart data={analysisData.diffData} color="#10b981" />
+                                    </div>
+                                    
+                                    <div>
+                                        <h3 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2 border-b pb-2"><Icon name="pie-chart" className="text-amber-500"/> 문제유형별 정답률</h3>
+                                        <div className="flex flex-wrap gap-4 justify-center md:justify-start w-full">
+                                            {Object.entries(analysisData.typeStats).map(([type, stats]) => (
+                                                <DonutChart key={type} data={[{name: '정답', value: stats.correct, color: '#4f46e5'}, {name: '오답', value: stats.total-stats.correct, color: '#e2e8f0'}]} title={type} />
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="absolute bottom-10 left-0 right-0 text-center text-xs text-slate-400 font-bold tracking-widest">
+                                MATH ANALYSIS SYSTEM - PAGE 1
+                            </div>
+                        </div>
+
+                        {/* --- Page 2: 상세 정오표 --- */}
+                        <div className="a4-page bg-white flex flex-col">
+                            <div className="border-b-2 border-slate-200 pb-4 mb-6">
+                                <h2 className="text-2xl font-black text-slate-900 flex items-center gap-2">
+                                    <Icon name="check-square" className="text-indigo-600"/> 문항별 상세 정오표
+                                </h2>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 flex-1 items-start content-start">
+                                {analysisData.results.map((row, idx) => (
+                                    <DetailRowItem key={idx} r={row} />
+                                ))}
+                            </div>
+
+                            <div className="mt-8 text-center text-xs text-slate-400 font-bold tracking-widest pt-4 border-t">
+                                MATH ANALYSIS SYSTEM - PAGE 2
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+    </script>
+</body>
+</html>
