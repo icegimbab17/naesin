@@ -90,6 +90,39 @@
         const auth = firebase.auth();
         const appId = firebaseConfig.projectId;
 
+        // --- 🌟 똑똑한 시험 기간 문자열 분석기 (괄호 인식 추가) ---
+        const parsePeriodString = (rawStr, rawGradeStr = '') => {
+            if (!rawStr) return '';
+            
+            // 1. 괄호 포맷 우선 확인: "공통수학1(복소수~연립방정식)" -> "공통수학1 복소수~연립방정식"
+            const parenMatch = String(rawStr).trim().match(/^(.+?)\((.+?)\)$/);
+            if (parenMatch) {
+                const sem = parenMatch[1].replace(/\s+/g, ''); // "공통수학 1" -> "공통수학1"
+                const exam = parenMatch[2].trim();
+                return `${sem} ${exam}`;
+            }
+            
+            // 2. 기존 포맷 확인 (예: "3학년 1학기 기말")
+            const str = String(rawStr);
+            let gMatch = (String(rawGradeStr) || str).match(/\d/);
+            let gradeStr = gMatch ? gMatch[0] : '';
+            let tMatch = str.match(/(\d)\s*학기/);
+            let termStr = tMatch ? tMatch[1] : '';
+            
+            let semesterStr = (gradeStr && termStr) ? `${gradeStr}-${termStr}` : str.replace(/중간|기말/g, '').trim();
+            if (!semesterStr && str.includes('-')) {
+                let sMatch = str.match(/(\d)[^\d]*(\d)/); 
+                if (sMatch) semesterStr = `${sMatch[1]}-${sMatch[2]}`;
+            }
+            semesterStr = semesterStr.replace(/\s+/g, '');
+
+            let examStr = str.includes('중간') ? '중간' : (str.includes('기말') ? '기말' : '');
+            
+            if (semesterStr && examStr) return `${semesterStr} ${examStr}`;
+            if (semesterStr) return semesterStr;
+            return str.trim();
+        };
+
         // --- URL 초압축 / 해제 엔진 ---
         const encodeReportData = (analysisData, studentName) => {
             const dictMap = new Map();
@@ -113,7 +146,14 @@
                 res.score || 0
             ]);
 
-            const payload = { p: analysisData.targetPeriod, n: studentName, d: dict, r: r };
+            const payload = { 
+                p: analysisData.targetPeriod, 
+                n: studentName, 
+                d: dict, 
+                r: r,
+                s: analysisData.schoolName || '' 
+            };
+
             try {
                 const jsonStr = JSON.stringify(payload);
                 return window.LZString.compressToEncodedURIComponent(jsonStr);
@@ -181,6 +221,7 @@
 
                 return {
                     period: payload.p, name: payload.n, score: totalScore,
+                    schoolName: payload.s || '',
                     results: results.map(r => ({q: r.qNum, m: r.majorUnit, i: r.minorUnit, t: r.type, d: r.difficulty, c: r.isCorrect, s: r.score})),
                     units: unitData, diffs: diffData, types: typeStats, comments: comments
                 };
@@ -190,7 +231,7 @@
             }
         };
 
-        // --- 🌟 KICE 전문 학습 가이드 생성 로직 ---
+        // --- 🌟 KICE 전문 학습 가이드 생성 로직 (불필요 조언 제거 및 70% 기준 완벽 반영) ---
         const generateAIComment = (analysisData) => {
             if (!analysisData) return {};
             const { unitData, totalScore, results } = analysisData;
@@ -212,7 +253,7 @@
                 const strongUnits = unitsWithPct.filter(u => u.pct === bestScore || u.pct >= 90).slice(0, 2);
                 strongText = strongUnits.map(u => u.name).join(', ');
 
-                // 70% 이하 보완 기준
+                // 70% 이하 보완 기준 엄격 적용
                 const weakCandidates = unitsWithPct.filter(u => u.pct <= 70).sort((a, b) => a.pct - b.pct);
                 if (weakCandidates.length > 0) {
                     weakText = weakCandidates.slice(0, 2).map(u => u.name).join(', ');
@@ -273,6 +314,7 @@
             }
 
             let method = "";
+            // 불필요한 공통 평가권 멘트는 여기서 완전히 제거되었습니다.
 
             if (percentage >= 100) {
                 method = `모든 단원의 개념을 완벽하게 이해하고 있습니다! 🎉 현재의 훌륭한 학습 패턴을 유지하며, 심화 문제나 선행 학습을 가볍게 시작해 보는 것을 적극 추천합니다.`;
@@ -430,7 +472,12 @@
                         <div className="bg-indigo-600 p-6 pt-10 text-white text-center relative overflow-hidden">
                             <div className="absolute opacity-10 -right-6 -top-6"><Icon name="award" size={150} /></div>
                             <p className="text-indigo-200 font-bold text-xs tracking-widest mb-1 relative z-10 uppercase">Math Report</p>
-                            <h1 className="text-2xl font-black mb-6 relative z-10">{data.period} 수학 성취도</h1>
+                            <div className="flex flex-col items-center justify-center relative z-10 mb-6 gap-1">
+                                <h1 className="text-2xl font-black text-center">{data.period} 수학 성취도</h1>
+                                {data.schoolName && (
+                                    <span className="text-sm font-bold text-indigo-200 bg-indigo-800/50 px-3 py-0.5 rounded-full">{data.schoolName}</span>
+                                )}
+                            </div>
                             
                             <div className="bg-white/10 p-5 rounded-2xl backdrop-blur-sm relative z-10 flex flex-col items-center border border-white/20 shadow-lg">
                                 <span className="text-sm font-bold text-indigo-100 mb-1">{data.name} 학생 종합 점수</span>
@@ -464,19 +511,19 @@
                                         </div>
                                     </div>
                                 </div>
-                                <p className="text-[13px] text-slate-600 leading-relaxed font-medium bg-white p-4 rounded-xl border border-slate-100 shadow-sm whitespace-pre-wrap">
+                                <div className="text-[13px] text-slate-600 leading-relaxed font-medium bg-white p-4 rounded-xl border border-slate-100 shadow-sm whitespace-pre-wrap">
                                     <span className="font-bold text-indigo-600 block mb-1">💡 전문 학습 가이드</span>{data.comments.method}
-                                </p>
+                                </div>
                             </div>
 
                             <div>
                                 <h3 className="font-black text-slate-800 mb-4 border-b-2 border-slate-100 pb-2 flex items-center gap-2 text-[15px]"><Icon name="bar-chart-2" size={18} className="text-indigo-500"/> 단원별 성취도</h3>
-                                <HorizontalBarChart data={data.units} color="#4f46e5" />
+                                <HorizontalBarChart data={data.units || data.unitData} color="#4f46e5" />
                             </div>
 
                             <div>
                                 <h3 className="font-black text-slate-800 mb-4 border-b-2 border-slate-100 pb-2 flex items-center gap-2 text-[15px]"><Icon name="layers" size={18} className="text-emerald-500"/> 난이도별 성취도</h3>
-                                <HorizontalBarChart data={data.diffs} color="#10b981" />
+                                <HorizontalBarChart data={data.diffs || data.diffData} color="#10b981" />
                             </div>
 
                             {data.types && Object.keys(data.types).length > 0 && (
@@ -513,7 +560,7 @@
             const [studentReportData, setStudentReportData] = useState(null);
             const [isGenerating, setIsGenerating] = useState(false);
 
-            // 기본 데이터를 localStorage 캐시로 초기화하여 즉각 표시
+            // 기본 데이터를 localStorage 캐시로 초기화
             const [exams, setExams] = useState(() => JSON.parse(localStorage.getItem('math_exams_cache') || '[]'));
             const [students, setStudents] = useState(() => JSON.parse(localStorage.getItem('math_students_cache') || '[]'));
             
@@ -522,6 +569,9 @@
                 examType: '', 
                 studentName: ''
             });
+
+            // 데이터 관리 모달 상태
+            const [showDataModal, setShowDataModal] = useState(false);
 
             // Firebase 익명 인증 및 실시간 동기화
             useEffect(() => {
@@ -571,8 +621,18 @@
             // 드롭다운 옵션 자동 계산
             const optionsData = useMemo(() => {
                 const allPeriods = [...new Set(exams.map(e => e.period))]; 
-                const semesters = [...new Set(allPeriods.map(p => p.split(' ')[0]))].filter(Boolean).sort();
-                const examTypes = ['중간', '기말'];
+                const semesters = [...new Set(allPeriods.map(p => {
+                    const idx = p.indexOf(' ');
+                    return idx > -1 ? p.substring(0, idx) : p;
+                }))].filter(Boolean).sort();
+                
+                const examTypes = [...new Set(allPeriods
+                    .filter(p => filters.semester ? p.startsWith(filters.semester + ' ') : true)
+                    .map(p => {
+                        const idx = p.indexOf(' ');
+                        return idx > -1 ? p.substring(idx + 1) : '';
+                    })
+                )].filter(Boolean);
                 
                 const targetPeriod = `${filters.semester} ${filters.examType}`.trim();
                 const availableStudents = [...new Set(students.filter(s => s.period === targetPeriod).map(s => s.name))].sort();
@@ -582,8 +642,13 @@
 
             useEffect(() => {
                 if (!filters.semester && optionsData.semesters.length > 0) setFilters(prev => ({ ...prev, semester: optionsData.semesters[0] }));
-                if (!filters.examType && optionsData.examTypes.length > 0) setFilters(prev => ({ ...prev, examType: '기말' }));
             }, [optionsData.semesters]);
+
+            useEffect(() => {
+                if (optionsData.examTypes.length > 0 && (!filters.examType || !optionsData.examTypes.includes(filters.examType))) {
+                    setFilters(prev => ({ ...prev, examType: optionsData.examTypes[0], studentName: '' }));
+                }
+            }, [optionsData.examTypes, filters.examType]);
 
             // 선택된 학생의 분석 데이터 
             const analysisData = useMemo(() => {
@@ -644,7 +709,10 @@
                     if(r.isCorrect) typeStats[t].correct++;
                 });
 
-                return { targetPeriod, results, totalScore, unitData, diffData, typeStats };
+                // 학교명 추출 (시험지 데이터 첫번째 문항 기준)
+                const schoolName = targetExams[0]?.school || '';
+
+                return { targetPeriod, results, totalScore, unitData, diffData, typeStats, schoolName };
             }, [exams, students, filters]);
 
             const comments = useMemo(() => generateAIComment(analysisData), [analysisData]);
@@ -675,18 +743,10 @@
                                     
                                     const rawPeriod = getVal(['출제시기', '시기']); 
                                     const rawGrade = getVal(['학년']); 
-                                    
-                                    let gMatch = rawGrade.match(/\d/);
-                                    let gradeStr = gMatch ? gMatch[0] : '';
-                                    
-                                    let tMatch = rawPeriod.match(/(\d)\s*학기/);
-                                    let termStr = tMatch ? tMatch[1] : '';
-                                    
-                                    let semesterStr = (gradeStr && termStr) ? `${gradeStr}-${termStr}` : getVal(['학년학기']);
-                                    let examStr = rawPeriod.includes('중간') ? '중간' : (rawPeriod.includes('기말') ? '기말' : '');
+                                    const parsedPeriod = parsePeriodString(rawPeriod, rawGrade);
                                     
                                     return {
-                                        period: `${semesterStr} ${examStr}`.trim(),
+                                        period: parsedPeriod,
                                         school: getVal(['학교명', '학교']),
                                         qNum: parseInt(getVal(['문항번호', '번호', '문항'])) || 0,
                                         type: getVal(['문항유형', '유형', '형태']),
@@ -716,19 +776,13 @@
                                     const fileName = file.name.replace(/\.[^/.]+$/, "").trim();
                                     if (fileName.includes('_')) {
                                         studentName = fileName.split('_')[0].trim();
-                                        const restStr = fileName.split('_')[1];
-                                        
-                                        let sMatch = restStr.match(/(\d)[^\d]*(\d)/); 
-                                        let semesterStr = sMatch ? `${sMatch[1]}-${sMatch[2]}` : "";
-                                        let examStr = restStr.includes('중간') ? '중간' : (restStr.includes('기말') ? '기말' : '');
-                                        
-                                        if (semesterStr && examStr) finalPeriod = `${semesterStr} ${examStr}`;
-                                        else if (semesterStr) finalPeriod = semesterStr;
+                                        const restStr = fileName.substring(fileName.indexOf('_') + 1);
+                                        finalPeriod = parsePeriodString(restStr) || fallbackPeriod;
                                     } else {
                                         studentName = fileName;
                                     }
 
-                                    if (!finalPeriod || finalPeriod === '기말' || finalPeriod === '중간' || finalPeriod === '-') {
+                                    if (!finalPeriod || finalPeriod === '-' || finalPeriod.split(' ').length < 2) {
                                         finalPeriod = fallbackPeriod;
                                     }
 
@@ -771,20 +825,20 @@
                                         
                                         const name = getVal(['이름', '학생', '성명']);
                                         const rawPeriod = getVal(['시험시기', '시기', '학년학기', '출제시기']); 
-                                        let sMatch = rawPeriod.match(/(\d)[^\d]*(\d)/); 
-                                        let semesterStr = sMatch ? `${sMatch[1]}-${sMatch[2]}` : rawPeriod;
                                         
-                                        let fullRowText = Object.values(row).join(' ');
-                                        let examStr = fullRowText.includes('중간') ? '중간' : (fullRowText.includes('기말') ? '기말' : '');
-                                        
-                                        let finalPeriod = semesterStr;
-                                        if (examStr && !finalPeriod.includes(examStr)) {
-                                            finalPeriod = `${semesterStr} ${examStr}`.trim();
-                                        }
-                                        finalPeriod = finalPeriod.replace(/(\d-\d)([^\s])/, '$1 $2').trim();
+                                        let finalPeriod = parsePeriodString(rawPeriod);
 
-                                        if (!finalPeriod || finalPeriod === '기말' || finalPeriod === '중간' || finalPeriod === '-') {
-                                            finalPeriod = fallbackPeriod;
+                                        if (!finalPeriod || finalPeriod.split(' ').length < 2) {
+                                            let fullRowText = Object.values(row).join(' ');
+                                            const parenMatch = fullRowText.match(/([가-힣a-zA-Z0-9]+)\((.+?)\)/);
+                                            if (parenMatch) {
+                                                finalPeriod = `${parenMatch[1].replace(/\s+/g, '')} ${parenMatch[2].trim()}`;
+                                            } else {
+                                                let examStr = fullRowText.includes('중간') ? '중간' : (fullRowText.includes('기말') ? '기말' : '');
+                                                const fallbackSem = fallbackPeriod.split(' ')[0] || '';
+                                                if (examStr && fallbackSem) finalPeriod = `${fallbackSem} ${examStr}`;
+                                                else finalPeriod = fallbackPeriod;
+                                            }
                                         }
                                         
                                         const responses = {};
@@ -975,13 +1029,72 @@
                 }
             };
 
+            // --- 데이터 관리 (삭제) 함수 모음 ---
+            const deleteStudent = async (studentName, period) => {
+                if (!confirm(`[${period}] 시험의 '${studentName}' 학생 데이터를 영구 삭제하시겠습니까?`)) return;
+                try {
+                    await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('students').doc(`${studentName}_${period}`).delete();
+                    alert("✅ 해당 학생의 데이터가 삭제되었습니다.");
+                    if (filters.studentName === studentName && filters.semester + " " + filters.examType === period) {
+                        setFilters({ ...filters, studentName: '' });
+                    }
+                } catch (e) {
+                    console.error(e);
+                    alert("삭제 중 오류가 발생했습니다.");
+                }
+            };
+
+            const deletePeriod = async (period) => {
+                if (!confirm(`⚠️ [${period}] 시험의 모든 문항 및 학생 데이터를 정말 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`)) return;
+                try {
+                    const batch = db.batch();
+                    const examsSnap = await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('exams').where('period', '==', period).get();
+                    const studentsSnap = await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('students').where('period', '==', period).get();
+                    
+                    examsSnap.forEach(doc => batch.delete(doc.ref));
+                    studentsSnap.forEach(doc => batch.delete(doc.ref));
+                    
+                    await batch.commit();
+                    alert(`✅ [${period}] 관련 모든 데이터가 삭제되었습니다.`);
+                    
+                    if (filters.semester + " " + filters.examType === period) {
+                        setFilters({ semester: '', examType: '', studentName: '' });
+                    }
+                } catch (e) {
+                    console.error(e);
+                    alert("삭제 중 오류가 발생했습니다.");
+                }
+            };
+
+            const handleClearAll = async () => {
+                if (!confirm("🚨 경고: 클라우드와 현재 기기에 저장된 [모든 시험 및 학생 데이터]를 영구적으로 삭제합니다.\n계속 진행하시겠습니까?")) return;
+                try {
+                    const examsSnap = await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('exams').get();
+                    const studentsSnap = await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('students').get();
+                    
+                    const promises = [];
+                    examsSnap.forEach(doc => promises.push(doc.ref.delete()));
+                    studentsSnap.forEach(doc => promises.push(doc.ref.delete()));
+                    await Promise.all(promises);
+
+                    localStorage.removeItem('math_exams_cache');
+                    localStorage.removeItem('math_students_cache');
+                    setFilters({ semester: '', examType: '', studentName: '' });
+                    setShowDataModal(false);
+                    alert("✅ 모든 데이터가 성공적으로 초기화되었습니다.");
+                } catch (error) {
+                    console.error("데이터 삭제 중 오류 발생:", error);
+                    alert("데이터 삭제에 실패했습니다.");
+                }
+            };
+
             if (isStudentView) {
                 return <StudentReportMobileView data={studentReportData} />;
             }
 
             return (
-                <div className="min-h-screen pb-12">
-                    <div className="bg-white border-b shadow-sm p-4 sticky top-0 z-50 no-print flex flex-wrap gap-4 items-center justify-between">
+                <div className="min-h-screen pb-12 relative">
+                    <div className="bg-white border-b shadow-sm p-4 sticky top-0 z-40 no-print flex flex-wrap gap-4 items-center justify-between">
                         <div className="flex items-center gap-6">
                             <h1 className="text-xl font-black text-indigo-900 flex items-center gap-2">
                                 <Icon name="graduation-cap" size={24} className="text-indigo-600"/>
@@ -997,10 +1110,10 @@
                                 </select>
                                 <select className="bg-transparent outline-none cursor-pointer"
                                         value={filters.examType} onChange={e => setFilters(p => ({...p, examType: e.target.value, studentName: ''}))}>
-                                    <option value="기말">기말</option>
-                                    <option value="중간">중간</option>
+                                    <option value="">시험 선택</option>
+                                    {optionsData.examTypes.map(s => <option key={s} value={s}>{s}</option>)}
                                 </select>
-                                <select className="bg-transparent outline-none text-indigo-600 cursor-pointer"
+                                <select className="bg-transparent outline-none text-indigo-600 cursor-pointer max-w-[150px]"
                                         value={filters.studentName} onChange={e => setFilters(p => ({...p, studentName: e.target.value}))}>
                                     <option value="">학생 이름 선택</option>
                                     {optionsData.students.map(s => <option key={s} value={s}>{s}</option>)}
@@ -1013,6 +1126,10 @@
                                 <Icon name="file-up" size={16}/> 데이터 업로드
                                 <input type="file" accept=".xlsx, .xls, .csv, .tsv" multiple className="hidden" onClick={(e) => (e.target.value = '')} onChange={handleFileUpload} />
                             </label>
+
+                            <button onClick={() => setShowDataModal(true)} className="bg-slate-100 text-slate-700 px-3 py-2 rounded-lg text-sm font-bold border hover:bg-slate-200 transition-colors flex items-center gap-1.5 shadow-sm" title="데이터 개별/전체 삭제 관리">
+                                <Icon name="settings" size={16}/> 데이터 관리
+                            </button>
                         
                             <button onClick={handleCopyLink} className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-1.5 shadow-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled={!analysisData || isGenerating}>
                                 {isGenerating ? <Icon name="loader-2" size={16} className="animate-spin-slow" /> : <Icon name="link" size={16}/>}
@@ -1043,7 +1160,12 @@
                                 <div className="border-b-4 border-indigo-900 pb-6 mb-8 flex justify-between items-end">
                                     <div>
                                         <div className="text-indigo-600 font-black text-xs tracking-widest mb-1 uppercase tracking-tighter">Achievement Report</div>
-                                        <h1 className="text-4xl font-black text-slate-900 leading-tight">{analysisData.targetPeriod} 수학 성취도 리포트</h1>
+                                        <div className="flex items-baseline gap-3">
+                                            <h1 className="text-3xl font-black text-slate-900 leading-tight">{analysisData.targetPeriod} 수학 성취도 리포트</h1>
+                                            {analysisData.schoolName && (
+                                                <span className="text-lg font-bold text-slate-600">{analysisData.schoolName}</span>
+                                            )}
+                                        </div>
                                     </div>
                                     <div className="text-right flex items-center gap-4">
                                         <div>
@@ -1141,6 +1263,51 @@
 
                                 <div className="mt-8 text-center text-[10px] text-slate-300 font-bold tracking-[0.2em] uppercase pt-4 border-t border-slate-50 font-sans">
                                     Academic Analysis System — Page 2
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* --- 데이터 관리 (개별 삭제 / 전체 삭제) 모달 --- */}
+                    {showDataModal && (
+                        <div className="fixed inset-0 bg-slate-900/40 z-[100] flex items-center justify-center p-4 backdrop-blur-sm no-print">
+                            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[85vh] animate-in fade-in zoom-in duration-200">
+                                <div className="p-5 border-b flex justify-between items-center bg-slate-50 rounded-t-2xl">
+                                    <h2 className="text-lg font-black text-slate-800 flex items-center gap-2"><Icon name="database" className="text-indigo-600"/> 데이터 관리</h2>
+                                    <button onClick={() => setShowDataModal(false)} className="text-slate-400 hover:text-slate-700 bg-white rounded-full p-1 border shadow-sm transition-colors"><Icon name="x" size={18}/></button>
+                                </div>
+                                
+                                <div className="p-5 overflow-y-auto flex-1 space-y-6">
+                                    {optionsData.semesters.length === 0 ? (
+                                        <div className="text-center text-slate-400 py-10 font-bold">저장된 데이터가 없습니다.</div>
+                                    ) : (
+                                        [...new Set(exams.map(e => e.period))].sort().map(period => (
+                                            <div key={period} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                                                <div className="bg-slate-50 px-4 py-3 flex justify-between items-center border-b border-slate-200">
+                                                    <span className="font-black text-indigo-700">{period} 시험</span>
+                                                    <button onClick={() => deletePeriod(period)} className="text-xs text-rose-600 font-bold hover:bg-rose-50 px-2 py-1 rounded border border-rose-200 transition-colors">이 시험 전체 삭제</button>
+                                                </div>
+                                                <ul className="divide-y divide-slate-100">
+                                                    {students.filter(s => s.period === period).map(s => (
+                                                        <li key={s.name} className="flex justify-between items-center px-4 py-3 hover:bg-slate-50 transition-colors">
+                                                            <span className="text-sm font-bold text-slate-700">{s.name} 학생</span>
+                                                            <button onClick={() => deleteStudent(s.name, period)} className="text-slate-400 hover:text-rose-500 transition-colors p-1" title={`${s.name} 삭제`}><Icon name="trash-2" size={16}/></button>
+                                                        </li>
+                                                    ))}
+                                                    {students.filter(s => s.period === period).length === 0 && (
+                                                        <li className="px-4 py-3 text-xs text-slate-400 text-center">등록된 학생이 없습니다.</li>
+                                                    )}
+                                                </ul>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                                
+                                <div className="p-5 border-t bg-slate-50 flex justify-between items-center rounded-b-2xl">
+                                    <span className="text-xs text-slate-500 font-bold">⚠️ 삭제 시 클라우드 서버에서도 지워집니다.</span>
+                                    <button onClick={handleClearAll} disabled={optionsData.semesters.length === 0} className="bg-rose-500 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md hover:bg-rose-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                                        모든 데이터 초기화
+                                    </button>
                                 </div>
                             </div>
                         </div>
