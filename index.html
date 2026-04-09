@@ -73,7 +73,7 @@
         const ReactDOM = window.ReactDOM;
         const { useState, useMemo, useRef, useEffect } = React;
 
-        // --- Firebase Config (실제 설정값 반영) ---
+        // --- Firebase Config ---
         const firebaseConfig = {
             apiKey: "AIzaSyC82hnDtesWHC2Xm3P36V1kKQfl-1RIhtM",
             authDomain: "math-evaluation-system.firebaseapp.com",
@@ -90,21 +90,31 @@
         const auth = window.firebase.auth();
         const appId = firebaseConfig.projectId;
 
-        // --- 🌟 똑똑한 시험 기간 문자열 분석기 (중/고 접두사 제거 및 괄호 완벽 인식) ---
-        const parsePeriodString = (rawStr, rawGradeStr = '') => {
+        // --- 🌟 똑똑한 시험 기간 문자열 분석기 (초정밀 파싱) ---
+        const parsePeriodString = (rawStr, rawGradeStr = '', fileName = '') => {
             const parseLogic = (str, gradeStr) => {
                 if (!str) return '';
                 str = String(str).trim();
                 
-                // 파일명에서 학생이름(강동원_)이 넘어왔을 경우 잘라냄
+                // 파일명에서 학생이름이 넘어왔을 경우 (예: 강동원_) 잘라냄
                 if (str.includes('_')) str = str.substring(str.indexOf('_') + 1);
                 
-                // 패턴 1: 괄호 포함 (예: 공통수학1 성취도 평가(복소수~연립방정식))
+                // 패턴 0: 대괄호 포함 (예: [공통수학1][성취도 평가])
+                const squareMatch = str.match(/\[(.*?)\]\s*\[(.*?)\]/);
+                if (squareMatch) {
+                    let sem = squareMatch[1].replace(/성취도\s*평가/g, '').replace(/테스트/g, '').trim();
+                    sem = sem.replace(/\s+/g, ''); 
+                    sem = sem.replace(/^[중고](?=\d-\d)/, ''); 
+                    let exam = squareMatch[2].trim(); 
+                    exam = exam.replace(/고사$/, ''); 
+                    if (sem && exam) return `${sem} ${exam}`;
+                }
+
+                // 패턴 1: 소괄호 포함 (예: 공통수학1 성취도 평가(복소수~연립방정식))
                 const parenMatch = str.match(/(.*?)\((.*?)\)/);
                 if (parenMatch) {
                     let sem = parenMatch[1].replace(/성취도\s*평가/g, '').replace(/테스트/g, '').trim();
                     sem = sem.replace(/\s+/g, ''); 
-                    // '중2-1' 이나 '고1-1' 에서 앞의 '중/고' 글자만 날려서 엑셀 포맷과 통일!
                     sem = sem.replace(/^[중고](?=\d-\d)/, ''); 
                     let exam = parenMatch[2].trim(); 
                     exam = exam.replace(/고사$/, ''); 
@@ -112,7 +122,6 @@
                 }
                 
                 // 패턴 2: 기존 중/고등 방식 (예: 2024 1학기 기말)
-                // 연도가 있으면 학년 인식에 방해되므로 임시로 가림
                 let strForGrade = str.replace(/20\d{2}/g, '');
                 let gradeMatchStr = String(gradeStr) ? String(gradeStr) : strForGrade;
                 
@@ -128,7 +137,7 @@
                     if (sMatch) semester = `${sMatch[1]}-${sMatch[2]}`;
                 }
                 semester = semester.replace(/\s+/g, '');
-                semester = semester.replace(/^[중고](?=\d-\d)/, ''); // 여기서도 '중/고' 접두사 제거
+                semester = semester.replace(/^[중고](?=\d-\d)/, ''); 
                 
                 let exam = str.includes('중간') ? '중간' : (str.includes('기말') ? '기말' : '');
                 
@@ -137,7 +146,27 @@
                 return str.trim();
             };
 
-            return parseLogic(rawStr, rawGradeStr);
+            // 1순위: 파일명에서 가장 확실하게 파악 (공통수학 등 괄호 구조)
+            if (fileName) {
+                // '.xlsx - Sheet1.csv' 같은 복잡한 확장자까지 완벽하게 자르기 위해 첫 '.' 기준 자름
+                const baseName = fileName.split('.')[0].trim();
+                if (baseName.includes('[') || baseName.includes('(') || baseName.includes('공통수학')) {
+                    const fileResult = parseLogic(baseName, '');
+                    if (fileResult) return fileResult;
+                }
+            }
+            
+            // 2순위: 엑셀 내부 데이터 파싱
+            let result = parseLogic(rawStr, rawGradeStr);
+            
+            // 3순위: 내부 데이터 실패 시 파일명 백업
+            if ((!result || result.length < 2 || !result.includes(' ')) && fileName) {
+                const baseName = fileName.split('.')[0].trim();
+                const fbResult = parseLogic(baseName, '');
+                if (fbResult && fbResult.includes(' ')) result = fbResult;
+            }
+            
+            return result;
         };
 
         // --- URL 초압축 / 해제 엔진 ---
@@ -441,59 +470,67 @@
             );
         };
 
-        // --- 모바일 전용 학생 뷰 컴포넌트 ---
+        // --- 📱 모바일 전용 학생 뷰 컴포넌트 (요청하신 새로운 가로 레이아웃 완벽 반영!) ---
         const StudentReportMobileView = ({ data }) => {
             if (!data) return <div className="p-8 text-center h-screen flex items-center justify-center font-bold text-slate-500">데이터를 불러올 수 없습니다.</div>;
 
             return (
                 <div className="min-h-screen bg-slate-100 md:py-8 font-sans">
                     <div className="max-w-md mx-auto bg-white md:rounded-3xl shadow-2xl overflow-hidden min-h-screen md:min-h-0 pb-12">
-                        <div className="bg-indigo-600 p-6 pt-10 text-white text-center relative overflow-hidden">
+                        
+                        {/* 1. 상단 파란색 타이틀 헤더 */}
+                        <div className="bg-indigo-600 p-6 pt-8 pb-16 text-white text-center relative overflow-hidden rounded-b-3xl shadow-md">
                             <div className="absolute opacity-10 -right-6 -top-6"><Icon name="award" size={150} /></div>
                             <p className="text-indigo-200 font-bold text-xs tracking-widest mb-1 relative z-10 uppercase">Math Report</p>
-                            <div className="flex flex-col items-center justify-center relative z-10 mb-6 gap-1">
-                                <h1 className="text-2xl font-black text-center">{data.period} 수학 성취도</h1>
+                            <div className="flex flex-col items-center justify-center relative z-10 gap-1.5">
+                                <h1 className="text-[22px] leading-snug font-black text-center whitespace-pre-wrap">{data.period}</h1>
                                 {data.schoolName && (
-                                    <span className="text-sm font-bold text-indigo-200 bg-indigo-800/50 px-3 py-0.5 rounded-full">{data.schoolName}</span>
+                                    <span className="text-xs font-bold text-indigo-200 bg-indigo-800/50 px-3 py-1 rounded-full">{data.schoolName}</span>
                                 )}
-                            </div>
-                            
-                            <div className="bg-white/10 p-5 rounded-2xl backdrop-blur-sm relative z-10 flex flex-col items-center border border-white/20 shadow-lg">
-                                <span className="text-sm font-bold text-indigo-100 mb-1">{data.name} 학생 종합 점수</span>
-                                <div className="flex items-baseline gap-1">
-                                    <span className="text-6xl font-black tracking-tighter">{data.score}</span>
-                                    <span className="text-xl font-bold">점</span>
-                                </div>
                             </div>
                         </div>
 
-                        <div className="p-5 space-y-8 mt-2">
-                            <div className="bg-slate-50 border border-slate-100 rounded-2xl p-5 shadow-sm">
-                                <h3 className="font-black text-slate-800 mb-4 flex items-center gap-2 text-sm"><Icon name="sparkles" size={18} className="text-amber-500"/> 학습 종합 분석</h3>
-                                <div className="flex gap-3 mb-4">
-                                    <div className="flex-1 bg-white p-3 rounded-xl border border-emerald-100 flex items-start gap-3 shadow-sm">
-                                        <div className="bg-emerald-100 p-2 rounded-lg text-emerald-600 shrink-0"><Icon name="trending-up" size={18}/></div>
-                                        <div className="min-w-0 flex-1">
-                                            <p className="text-[10px] text-slate-400 font-bold mb-1">강한 단원</p>
-                                            <p className="text-[13px] font-black text-slate-800 whitespace-normal break-keep leading-snug">{data.comments.strong}</p>
+                        {/* 2. 🌟 요청하신 가로형 배치: [점수(좌)] + [강한/보완단원(우)] 🌟 */}
+                        <div className="px-4 -mt-10 relative z-20 mb-6">
+                            <div className="bg-white rounded-2xl shadow-xl border border-slate-100 p-5 flex items-stretch gap-4">
+                                {/* 좌측: 학생 이름 & 점수 */}
+                                <div className="flex flex-col items-center justify-center flex-shrink-0 pr-4 border-r border-slate-100 min-w-[100px]">
+                                    <span className="text-[12px] font-bold text-slate-500 mb-1">{data.name} 학생</span>
+                                    <div className="flex items-baseline gap-0.5 text-indigo-600">
+                                        <span className="text-4xl font-black tracking-tighter">{data.score}</span>
+                                        <span className="text-sm font-bold">점</span>
+                                    </div>
+                                </div>
+                                
+                                {/* 우측: 강한 단원 & 보완 단원 */}
+                                <div className="flex flex-col gap-3 flex-1 min-w-0 justify-center">
+                                    <div className="flex items-start gap-2.5">
+                                        <div className="bg-emerald-50 text-emerald-600 p-1.5 rounded mt-0.5 shrink-0"><Icon name="trending-up" size={14}/></div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-[11px] font-bold text-slate-400 leading-none mb-1">강한 단원</p>
+                                            <p className="text-[13px] font-black text-slate-800 truncate break-keep">{data.comments.strong}</p>
                                         </div>
                                     </div>
-                                    <div className="flex-1 bg-white p-3 rounded-xl border border-rose-100 flex items-start gap-3 shadow-sm">
-                                        <div className="bg-rose-100 p-2 rounded-lg text-rose-600 shrink-0"><Icon name="trending-down" size={18}/></div>
-                                        <div className="min-w-0 flex-1">
-                                            <p className="text-[10px] text-slate-400 font-bold mb-1">
+                                    <div className="flex items-start gap-2.5">
+                                        <div className="bg-rose-50 text-rose-600 p-1.5 rounded mt-0.5 shrink-0"><Icon name="trending-down" size={14}/></div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-[11px] font-bold text-slate-400 leading-none mb-1">
                                                 {data.comments.weak.includes('완벽함') || data.comments.weak.includes('우수함') || data.comments.weak.includes('양호함') ? '특이사항' : '보완 단원'}
                                             </p>
-                                            <p className={`text-[13px] font-black whitespace-normal break-keep leading-snug ${data.comments.weak.includes('완벽함') || data.comments.weak.includes('우수함') || data.comments.weak.includes('양호함') ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                            <p className={`text-[13px] font-black truncate break-keep ${data.comments.weak.includes('완벽함') ? 'text-emerald-600' : 'text-slate-800'}`}>
                                                 {data.comments.weak}
                                             </p>
                                         </div>
                                     </div>
                                 </div>
-                                <p className="text-[13px] text-slate-600 leading-relaxed font-medium bg-white p-4 rounded-xl border border-slate-100 shadow-sm whitespace-pre-wrap">
-                                    <span className="font-bold text-indigo-600 block mb-1">💡 전문 학습 가이드</span><br/>{data.comments.method}
-                                </p>
                             </div>
+                        </div>
+
+                        <div className="px-4 space-y-8 mt-2">
+                            {/* 3. 학습 가이드 코멘트 (단독 배치) */}
+                            <p className="text-[13.5px] text-slate-700 leading-relaxed font-medium bg-white p-5 rounded-2xl border border-slate-100 shadow-sm whitespace-pre-wrap break-keep">
+                                <span className="font-bold text-indigo-600 mr-1 flex items-center gap-1.5 mb-2"><Icon name="lightbulb" size={16}/>전문 학습 가이드</span>{data.comments.method}
+                            </p>
 
                             <div>
                                 <h3 className="font-black text-slate-800 mb-4 border-b-2 border-slate-100 pb-2 flex items-center gap-2 text-[15px]"><Icon name="bar-chart-2" size={18} className="text-indigo-500"/> 단원별 성취도</h3>
@@ -535,7 +572,6 @@
             const urlParams = new URLSearchParams(window.location.search);
             const reportParam = urlParams.get('report');
             
-            // UI를 대체하는 Custom Modal/Toast State
             const [toast, setToast] = useState({ show: false, message: '', type: 'info' });
             const [confirmModal, setConfirmModal] = useState({ show: false, message: '', onConfirm: null });
             const [linkModal, setLinkModal] = useState({ show: false, url: '' });
@@ -544,29 +580,19 @@
             const [studentReportData, setStudentReportData] = useState(null);
             const [isGenerating, setIsGenerating] = useState(false);
 
-            // 기본 데이터를 localStorage 캐시로 초기화
             const [exams, setExams] = useState(() => JSON.parse(localStorage.getItem('math_exams_cache') || '[]'));
             const [students, setStudents] = useState(() => JSON.parse(localStorage.getItem('math_students_cache') || '[]'));
             
-            const [filters, setFilters] = useState({
-                semester: '', 
-                examType: '', 
-                studentName: ''
-            });
-
+            const [filters, setFilters] = useState({ semester: '', examType: '', studentName: '' });
             const [showDataModal, setShowDataModal] = useState(false);
 
-            // 알림 헬퍼 함수
             const showToast = (message, type = 'info') => {
                 setToast({ show: true, message, type });
                 setTimeout(() => setToast({ show: false, message: '', type: 'info' }), 3500);
             };
 
-            const requestConfirm = (message, onConfirm) => {
-                setConfirmModal({ show: true, message, onConfirm });
-            };
+            const requestConfirm = (message, onConfirm) => { setConfirmModal({ show: true, message, onConfirm }); };
 
-            // Firebase 익명 인증 및 실시간 동기화
             useEffect(() => {
                 const initFirebase = async () => {
                     try {
@@ -581,14 +607,12 @@
 
                                 examsRef.onSnapshot(snap => {
                                     const data = snap.docs.map(d => d.data());
-                                    setExams(data);
-                                    localStorage.setItem('math_exams_cache', JSON.stringify(data));
+                                    setExams(data); localStorage.setItem('math_exams_cache', JSON.stringify(data));
                                 });
                                 
                                 studentsRef.onSnapshot(snap => {
                                     const data = snap.docs.map(d => d.data());
-                                    setStudents(data);
-                                    localStorage.setItem('math_students_cache', JSON.stringify(data));
+                                    setStudents(data); localStorage.setItem('math_students_cache', JSON.stringify(data));
                                 });
                             }
                         });
@@ -597,13 +621,11 @@
                 initFirebase();
             }, []);
 
-            // 링크 복사 뷰 확인
             useEffect(() => {
                 if (reportParam) {
                     const decoded = decodeReportData(reportParam);
                     if (decoded) {
-                        setStudentReportData(decoded);
-                        setIsStudentView(true);
+                        setStudentReportData(decoded); setIsStudentView(true);
                     } else {
                         showToast('유효하지 않은 링크이거나 손상된 데이터입니다.', 'error');
                         window.history.replaceState({}, document.title, window.location.pathname);
@@ -611,19 +633,16 @@
                 }
             }, [reportParam]);
 
-            // 드롭다운 옵션 자동 계산
             const optionsData = useMemo(() => {
                 const allPeriods = [...new Set(exams.map(e => e.period))]; 
                 const semesters = [...new Set(allPeriods.map(p => {
-                    const idx = p.indexOf(' ');
-                    return idx > -1 ? p.substring(0, idx) : p;
+                    const idx = p.indexOf(' '); return idx > -1 ? p.substring(0, idx) : p;
                 }))].filter(Boolean).sort();
                 
                 const examTypes = [...new Set(allPeriods
                     .filter(p => filters.semester ? p.startsWith(filters.semester + ' ') : true)
                     .map(p => {
-                        const idx = p.indexOf(' ');
-                        return idx > -1 ? p.substring(idx + 1) : '';
+                        const idx = p.indexOf(' '); return idx > -1 ? p.substring(idx + 1) : '';
                     })
                 )].filter(Boolean);
                 
@@ -643,7 +662,6 @@
                 }
             }, [optionsData.examTypes, filters.examType]);
 
-            // 선택된 학생의 분석 데이터 
             const analysisData = useMemo(() => {
                 if (!filters.semester || !filters.examType || !filters.studentName) return null;
                 const targetPeriod = `${filters.semester} ${filters.examType}`;
@@ -657,22 +675,17 @@
                 const results = targetExams.map(ex => {
                     const studentAns = targetStudent.responses[ex.qNum];
                     const isCorrect = String(studentAns).trim().toUpperCase() === 'O' || String(studentAns).trim() === '정답';
-                    if (isCorrect) {
-                        totalScoreCalc += (ex.score || 0);
-                    }
+                    if (isCorrect) totalScoreCalc += (ex.score || 0);
                     return { ...ex, isCorrect, studentAns };
                 });
 
                 const maxPossibleScore = targetExams.reduce((sum, ex) => sum + (ex.score || 0), 0);
-                const totalScore = maxPossibleScore > 0 
-                    ? Math.round(totalScoreCalc * 10) / 10 
-                    : Math.round((results.filter(r => r.isCorrect).length / results.length) * 100);
+                const totalScore = maxPossibleScore > 0 ? Math.round(totalScoreCalc * 10) / 10 : Math.round((results.filter(r => r.isCorrect).length / results.length) * 100);
 
                 const unitStats = {};
                 results.forEach(r => {
                     if(!unitStats[r.majorUnit]) unitStats[r.majorUnit] = { total: 0, correct: 0 };
-                    unitStats[r.majorUnit].total++;
-                    if(r.isCorrect) unitStats[r.majorUnit].correct++;
+                    unitStats[r.majorUnit].total++; if(r.isCorrect) unitStats[r.majorUnit].correct++;
                 });
                 const unitData = Object.entries(unitStats).map(([name, stats]) => ({ name, ...stats }));
 
@@ -680,36 +693,27 @@
                 const diffStats = { '상': {total:0, correct:0}, '중': {total:0, correct:0}, '하': {total:0, correct:0} };
                 results.forEach(r => {
                     let d = String(r.difficulty || '중');
-                    if (d.includes('상') || d.includes('어려움') || d.includes('어려운') || d.includes('7') || d.includes('8')) d = '상';
-                    else if (d.includes('하') || d.includes('쉬움') || d.includes('쉬운') || d.includes('1') || d.includes('2')) d = '하';
+                    if (d.includes('상') || d.includes('어려움') || d.includes('7') || d.includes('8')) d = '상';
+                    else if (d.includes('하') || d.includes('쉬움') || d.includes('1') || d.includes('2')) d = '하';
                     else d = '중';
-                    
                     if(!diffStats[d]) diffStats[d] = {total:0, correct:0};
-                    diffStats[d].total++;
-                    if(r.isCorrect) diffStats[d].correct++;
+                    diffStats[d].total++; if(r.isCorrect) diffStats[d].correct++;
                 });
                 const diffData = Object.entries(diffStats).map(([name, stats]) => ({ name, ...stats })).filter(d=>d.total>0).sort((a,b) => diffOrder.indexOf(b.name) - diffOrder.indexOf(a.name));
 
                 const typeStats = {};
                 results.forEach(r => {
                     let t = String(r.type || '기타');
-                    if (t.includes('객관')) t = '객관식';
-                    else if (t.includes('주관') || t.includes('서술')) t = '주관식/서술형';
-                    else t = '기타';
-
+                    if (t.includes('객관')) t = '객관식'; else if (t.includes('주관') || t.includes('서술')) t = '주관식/서술형'; else t = '기타';
                     if(!typeStats[t]) typeStats[t] = { total: 0, correct: 0 };
-                    typeStats[t].total++;
-                    if(r.isCorrect) typeStats[t].correct++;
+                    typeStats[t].total++; if(r.isCorrect) typeStats[t].correct++;
                 });
 
-                // 학교명 추출 및 연도 결합 로직
                 let schoolName = targetExams[0]?.school || '';
-                const rawPeriod = targetExams[0]?.rawPeriod || ''; // 파싱할 때 보존해둔 원본 출제시기 문자열
+                const rawPeriod = targetExams[0]?.rawPeriod || ''; 
                 if (schoolName) {
                     const yearMatch = String(rawPeriod).match(/20\d{2}/);
-                    if (yearMatch && !schoolName.includes('년')) {
-                        schoolName = `${yearMatch[0]}년 ${schoolName}`;
-                    }
+                    if (yearMatch && !schoolName.includes('년')) schoolName = `${yearMatch[0]}년 ${schoolName}`;
                 }
 
                 return { targetPeriod, results, totalScore, unitData, diffData, typeStats, schoolName };
@@ -717,7 +721,7 @@
 
             const comments = useMemo(() => generateAIComment(analysisData), [analysisData]);
 
-            // 파일 업로드 - 안정적인 상태 업데이트와 파이어베이스 연동 처리
+            // 🌟 탭(Tab)으로 분리된 엑셀 CSV 완벽 인식 불도저 엔진
             const handleFileUpload = async (e) => {
                 const files = Array.from(e.target.files);
                 if (files.length === 0) return;
@@ -732,59 +736,75 @@
                             try {
                                 const buffer = evt.target.result;
                                 let text = ""; 
-                                try { 
-                                    text = new TextDecoder('utf-8', {fatal:true}).decode(new Uint8Array(buffer)); 
-                                } catch(err) { 
-                                    text = new TextDecoder('euc-kr').decode(new Uint8Array(buffer)); 
-                                }
+                                try { text = new TextDecoder('utf-8', {fatal:true}).decode(new Uint8Array(buffer)); } 
+                                catch(err) { text = new TextDecoder('euc-kr').decode(new Uint8Array(buffer)); }
                                 
                                 let wb;
-                                // 🌟 탭 분리형 CSV 파일 강제 인식 로직 (개선)
+                                let fileType = 'UNKNOWN';
+                                let headerIdx = -1;
+                                let aoa = [];
+
                                 if (file.name.toLowerCase().endsWith('.csv') || file.name.toLowerCase().endsWith('.tsv')) {
-                                    text = text.replace(/\r/g, ''); // 윈도우 환경 숨은 줄바꿈 문자 제거
-                                    if (text.includes('\t')) {
-                                        const rows = text.trim().split('\n').map(l => l.split('\t'));
-                                        wb = { Sheets: { Sheet1: window.XLSX.utils.aoa_to_sheet(rows) }, SheetNames: ['Sheet1'] };
-                                    } else {
-                                        const rows = text.trim().split('\n').map(l => l.split(','));
-                                        wb = { Sheets: { Sheet1: window.XLSX.utils.aoa_to_sheet(rows) }, SheetNames: ['Sheet1'] };
-                                    }
+                                    text = text.replace(/\r/g, ''); 
+                                    const sep = text.includes('\t') ? '\t' : ',';
+                                    aoa = text.trim().split('\n').map(l => l.split(sep));
                                 } else {
-                                    wb = window.XLSX.read(new Uint8Array(buffer), { type: 'array' });
+                                    const tempWb = window.XLSX.read(new Uint8Array(buffer), { type: 'array' });
+                                    aoa = window.XLSX.utils.sheet_to_json(tempWb.Sheets[tempWb.SheetNames[0]], { header: 1, defval: "" });
                                 }
 
-                                const json = window.XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "" });
-                                if (json.length === 0) return resolve();
+                                // 메타 헤더를 무시하고 찐짜 표가 시작되는 줄을 찾아내는 무적의 탐색 엔진
+                                for (let i=0; i<Math.min(aoa.length, 15); i++) {
+                                    if (!aoa[i]) continue;
+                                    const rowStr = aoa[i].join(',').replace(/\s+/g, '');
+                                    if (rowStr.includes('대단원') || rowStr.includes('난이도')) { headerIdx = i; fileType = 'EXAM'; break; }
+                                    if (rowStr.includes('쓴답') || (rowStr.includes('문제') && rowStr.includes('정답'))) { headerIdx = i; fileType = 'V_STUDENT'; break; }
+                                    if (rowStr.includes('이름') || rowStr.includes('성명') || rowStr.includes('학생')) { headerIdx = i; fileType = 'H_STUDENT'; break; }
+                                }
 
-                                const keys = Object.keys(json[0]).map(k => String(k).trim()).join(',');
-                                
-                                if (keys.includes('단원') || keys.includes('난이도') || keys.includes('출제시기')) {
-                                    const parsedExams = json.map(row => {
+                                if (headerIdx === -1) return resolve();
+
+                                const headers = aoa[headerIdx].map(h => String(h).trim());
+                                const cleanJson = aoa.slice(headerIdx + 1)
+                                    .filter(r => r.some(c => String(c).trim() !== '')) 
+                                    .map(row => {
+                                        const obj = {};
+                                        headers.forEach((h, idx) => { obj[h] = row[idx]; });
+                                        return obj;
+                                    });
+
+                                if (fileType === 'EXAM') {
+                                    let metaStr = '';
+                                    for(let i=0; i<headerIdx; i++){ metaStr += aoa[i].join(' ') + ' '; }
+                                    
+                                    const parsedExams = cleanJson.map(row => {
                                         const getVal = (keywords) => {
                                             const key = Object.keys(row).find(k => keywords.some(kw => String(k).includes(kw)));
                                             return key ? String(row[key]).trim() : '';
                                         };
                                         
-                                        const rawPeriod = getVal(['출제시기', '시기']); 
+                                        let rawPeriod = getVal(['출제시기', '시기']); 
+                                        if (!rawPeriod) {
+                                            const m = metaStr.match(/출제시기\s*[:：]?\s*([^\s,]+)/);
+                                            if (m) rawPeriod = m[1];
+                                        }
                                         const rawGrade = getVal(['학년']); 
                                         const parsedPeriod = parsePeriodString(rawPeriod, rawGrade, file.name);
                                         
                                         return {
-                                            period: parsedPeriod,
-                                            rawPeriod: rawPeriod,
+                                            period: parsedPeriod, rawPeriod: rawPeriod,
                                             school: getVal(['학교명', '학교']),
                                             qNum: parseInt(getVal(['문항번호', '번호', '문항'])) || 0,
                                             type: getVal(['문항유형', '유형', '형태']),
                                             difficulty: getVal(['난이도', '수준']),
-                                            majorUnit: getVal(['대단원']),
-                                            minorUnit: getVal(['소단원']),
+                                            majorUnit: getVal(['대단원']), minorUnit: getVal(['소단원']),
                                             score: parseFloat(getVal(['배점', '점수'])) || 0
                                         };
                                     }).filter(e => e.qNum > 0);
                                     
                                     addedExams.push(...parsedExams);
                                 } 
-                                else if (keys.includes('문제') && (keys.includes('정답') || keys.includes('점수'))) {
+                                else if (fileType === 'V_STUDENT') {
                                     const fileName = file.name.replace(/\.[^/.]+$/, "").trim();
                                     let studentName = "학생";
                                     let finalPeriod = "";
@@ -798,7 +818,7 @@
                                     }
 
                                     const responses = {};
-                                    json.forEach(row => {
+                                    cleanJson.forEach(row => {
                                         const getVal = (keywords) => {
                                             const key = Object.keys(row).find(k => keywords.some(kw => String(k).includes(kw)));
                                             return key ? String(row[key]).trim() : '';
@@ -806,15 +826,20 @@
                                         const qNumStr = getVal(['문제', '문항']).replace(/[^0-9]/g, '');
                                         if (qNumStr) {
                                             const qNum = parseInt(qNumStr);
-                                            const score = parseFloat(getVal(['점수'])) || 0;
+                                            // '1학생' 등 글자가 섞여있어도 숫자만 확실히 뽑아냄
+                                            const scoreStr = getVal(['점수']).replace(/[^0-9.]/g, ''); 
+                                            const score = parseFloat(scoreStr) || 0;
                                             responses[qNum] = score > 0 ? 'O' : 'X';
                                         }
                                     });
 
-                                    addedStudents.push({ name: studentName, period: finalPeriod, responses });
+                                    addedStudents.push({ name: studentName, period: finalPeriod, responses, isVertical: true });
                                 }
-                                else if (keys.includes('이름') || keys.includes('학생') || keys.includes('성명') || (keys.includes('1') && keys.includes('2'))) {
-                                    const parsedStudents = json.map(row => {
+                                else if (fileType === 'H_STUDENT') {
+                                    let metaStr = '';
+                                    for(let i=0; i<headerIdx; i++){ metaStr += aoa[i].join(' ') + ' '; }
+
+                                    const parsedStudents = cleanJson.map(row => {
                                         const getVal = (keywords) => {
                                             const key = Object.keys(row).find(k => keywords.some(kw => String(k).includes(kw)));
                                             return key ? String(row[key]).trim() : '';
@@ -823,22 +848,14 @@
                                         const name = getVal(['이름', '학생', '성명']);
                                         if (!name) return null;
                                         
-                                        const rawPeriod = getVal(['시험시기', '시기', '학년학기', '출제시기']); 
+                                        let rawPeriod = getVal(['시험시기', '시기', '학년학기', '출제시기']); 
+                                        if (!rawPeriod) {
+                                            const m = metaStr.match(/시험지명?\s*[:：]?\s*([^\s,]+)/);
+                                            if (m) rawPeriod = m[1];
+                                        }
+
                                         let finalPeriod = parsePeriodString(rawPeriod, '', file.name);
 
-                                        if (!finalPeriod || finalPeriod.split(' ').length < 2) {
-                                            let fullRowText = Object.values(row).join(' ');
-                                            const parenMatch = fullRowText.match(/([가-힣a-zA-Z0-9\s]+?)(?:성취도\s*평가)?\s*\((.+?)\)/);
-                                            if (parenMatch) {
-                                                let sem = parenMatch[1].replace(/성취도\s*평가/g, '').replace(/테스트/g, '').replace(/\s+/g, '');
-                                                sem = sem.replace(/^[중고](?=\d-\d)/, '');
-                                                finalPeriod = `${sem} ${parenMatch[2].trim()}`;
-                                            } else {
-                                                let examStr = fullRowText.includes('중간') ? '중간' : (fullRowText.includes('기말') ? '기말' : '');
-                                                finalPeriod = examStr ? `FALLBACK ${examStr}` : "";
-                                            }
-                                        }
-                                        
                                         const responses = {};
                                         Object.keys(row).forEach(k => {
                                             const qNumStr = String(k).replace(/[^0-9]/g, '');
@@ -864,19 +881,25 @@
                     });
                 }
 
-                // 상태 업데이트와 파이어베이스 전송을 분리하여 안정성 강화
+                // 스마트 매칭: 시험지 파일의 기간과 학생 파일의 기간이 조금 달라도 강제 연결
                 const currentTotalExams = [...exams, ...addedExams];
                 const fallbackPeriod = currentTotalExams.length > 0 ? currentTotalExams[0].period : '';
 
                 addedStudents = addedStudents.map(s => {
-                    if (!s.period || s.period.startsWith('FALLBACK') || s.period === '-' || s.period.split(' ').length < 2) {
-                        if (s.period && s.period.startsWith('FALLBACK')) {
-                            const examSuffix = s.period.split(' ')[1];
-                            s.period = fallbackPeriod ? `${fallbackPeriod.split(' ')[0]} ${examSuffix}` : fallbackPeriod;
-                        } else {
-                            s.period = fallbackPeriod;
-                        }
+                    let finalPeriod = s.period;
+                    let isExactMatch = currentTotalExams.some(ex => ex.period === finalPeriod);
+                    
+                    if (!isExactMatch && currentTotalExams.length > 0) {
+                        const semPrefix = finalPeriod ? finalPeriod.split(' ')[0] : '';
+                        const partialMatch = currentTotalExams.find(ex => ex.period.startsWith(semPrefix));
+                        
+                        if (partialMatch) finalPeriod = partialMatch.period;
+                        else finalPeriod = fallbackPeriod;
+                    } else if (!finalPeriod || finalPeriod === '-' || finalPeriod.split(' ').length < 2) {
+                        finalPeriod = fallbackPeriod;
                     }
+                    
+                    s.period = finalPeriod;
                     return s;
                 });
 
@@ -904,20 +927,12 @@
                 e.target.value = '';
             };
 
-            // is.gd 단축 URL API
             const handleCopyLink = async () => {
-                if (!analysisData) {
-                    showToast("데이터 분석이 완료되지 않았습니다.", "error");
-                    return;
-                }
-                
+                if (!analysisData) { showToast("데이터 분석이 완료되지 않았습니다.", "error"); return; }
                 setIsGenerating(true);
 
                 const encoded = encodeReportData(analysisData, filters.studentName);
-                if (!encoded) {
-                    setIsGenerating(false);
-                    return showToast('링크 생성에 실패했습니다.', 'error');
-                }
+                if (!encoded) { setIsGenerating(false); return showToast('링크 생성에 실패했습니다.', 'error'); }
                 
                 const baseUrl = window.location.origin + window.location.pathname;
                 const reportUrl = `${baseUrl}?report=${encoded}`;
@@ -930,47 +945,27 @@
                             delete window[callbackName];
                             const script = document.getElementById(callbackName);
                             if (script) script.remove();
-                            if (data && data.shorturl) {
-                                resolve(data.shorturl);
-                            } else {
-                                reject(new Error("URL 단축 실패"));
-                            }
+                            if (data && data.shorturl) resolve(data.shorturl);
+                            else reject(new Error("URL 단축 실패"));
                         };
                         const script = document.createElement('script');
                         script.id = callbackName;
                         script.src = `https://is.gd/create.php?format=json&url=${encodeURIComponent(reportUrl)}&callback=${callbackName}`;
-                        script.onerror = () => {
-                            delete window[callbackName];
-                            script.remove();
-                            reject(new Error("네트워크 오류"));
-                        };
+                        script.onerror = () => { delete window[callbackName]; script.remove(); reject(new Error("네트워크 오류")); };
                         document.body.appendChild(script);
-                        
-                        setTimeout(() => {
-                            if(window[callbackName]) reject(new Error("타임아웃"));
-                        }, 3000);
+                        setTimeout(() => { if(window[callbackName]) reject(new Error("타임아웃")); }, 3000);
                     });
-                } catch (err) {
-                    console.warn("단축 URL 변환 실패, 기본 압축 링크 사용됨");
-                }
+                } catch (err) { console.warn("단축 URL 변환 실패, 기본 압축 링크 사용됨"); }
                 
                 setIsGenerating(false);
                 setLinkModal({ show: true, url: finalUrl });
             };
 
             const handlePrint = () => {
-                if (!analysisData) {
-                    showToast("데이터 분석이 완료되지 않았습니다.", "error");
-                    return;
-                }
-                try {
-                    window.print();
-                } catch(e) {
-                    showToast("이 환경에서는 인쇄 기능을 직접 실행할 수 없습니다. 키보드 단축키(Ctrl+P)를 이용해주세요.", "error");
-                }
+                if (!analysisData) { showToast("데이터 분석이 완료되지 않았습니다.", "error"); return; }
+                try { window.print(); } catch(e) { showToast("키보드 단축키(Ctrl+P)를 이용해주세요.", "error"); }
             };
 
-            // --- 데이터 관리 (삭제) 함수 모음 ---
             const deleteStudent = (studentName, period) => {
                 requestConfirm(`[${period}] 시험의 '${studentName}' 학생 데이터를 영구 삭제하시겠습니까?`, async () => {
                     try {
@@ -979,10 +974,7 @@
                         if (filters.studentName === studentName && filters.semester + " " + filters.examType === period) {
                             setFilters({ ...filters, studentName: '' });
                         }
-                    } catch (e) {
-                        console.error(e);
-                        showToast("삭제 중 오류가 발생했습니다.", "error");
-                    }
+                    } catch (e) { console.error(e); showToast("삭제 중 오류가 발생했습니다.", "error"); }
                 });
             };
 
@@ -999,13 +991,8 @@
                         await batch.commit();
                         showToast(`✅ [${period}] 관련 모든 데이터가 삭제되었습니다.`, "success");
                         
-                        if (filters.semester + " " + filters.examType === period) {
-                            setFilters({ semester: '', examType: '', studentName: '' });
-                        }
-                    } catch (e) {
-                        console.error(e);
-                        showToast("삭제 중 오류가 발생했습니다.", "error");
-                    }
+                        if (filters.semester + " " + filters.examType === period) setFilters({ semester: '', examType: '', studentName: '' });
+                    } catch (e) { console.error(e); showToast("삭제 중 오류가 발생했습니다.", "error"); }
                 });
             };
 
@@ -1020,32 +1007,24 @@
                         studentsSnap.forEach(doc => promises.push(doc.ref.delete()));
                         await Promise.all(promises);
 
-                        localStorage.removeItem('math_exams_cache');
-                        localStorage.removeItem('math_students_cache');
+                        localStorage.removeItem('math_exams_cache'); localStorage.removeItem('math_students_cache');
                         setFilters({ semester: '', examType: '', studentName: '' });
                         setShowDataModal(false);
                         showToast("✅ 모든 데이터가 성공적으로 초기화되었습니다.", "success");
-                    } catch (error) {
-                        console.error("데이터 삭제 중 오류 발생:", error);
-                        showToast("데이터 삭제에 실패했습니다.", "error");
-                    }
+                    } catch (error) { console.error("데이터 삭제 중 오류 발생:", error); showToast("데이터 삭제에 실패했습니다.", "error"); }
                 });
             };
 
-            if (isStudentView) {
-                return <StudentReportMobileView data={studentReportData} />;
-            }
+            if (isStudentView) return <StudentReportMobileView data={studentReportData} />;
 
             return (
                 <div className="min-h-screen pb-12 relative">
-                    {/* --- Toast 알림창 --- */}
                     {toast.show && (
                         <div className={`fixed bottom-5 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-full shadow-lg z-[200] font-bold text-white transition-all animate-in fade-in slide-in-from-bottom-5 ${toast.type === 'error' ? 'bg-rose-500' : 'bg-emerald-600'}`}>
                             {toast.message}
                         </div>
                     )}
 
-                    {/* --- 삭제 확인 모달창 --- */}
                     {confirmModal.show && (
                         <div className="fixed inset-0 bg-slate-900/40 z-[200] flex items-center justify-center p-4 backdrop-blur-sm">
                             <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full animate-in zoom-in-95">
@@ -1058,7 +1037,6 @@
                         </div>
                     )}
 
-                    {/* --- 링크 복사 모달창 --- */}
                     {linkModal.show && (
                         <div className="fixed inset-0 bg-slate-900/40 z-[200] flex items-center justify-center p-4 backdrop-blur-sm">
                             <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-md w-full animate-in zoom-in-95">
