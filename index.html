@@ -73,7 +73,7 @@
         const ReactDOM = window.ReactDOM;
         const { useState, useMemo, useRef, useEffect } = React;
 
-        // --- Firebase Config (실제 설정값 반영) ---
+        // --- Firebase Config ---
         const firebaseConfig = {
             apiKey: "AIzaSyC82hnDtesWHC2Xm3P36V1kKQfl-1RIhtM",
             authDomain: "math-evaluation-system.firebaseapp.com",
@@ -90,19 +90,16 @@
         const auth = window.firebase.auth();
         const appId = firebaseConfig.projectId;
 
-        // --- 🌟 초정밀 시험 기간 문자열 분석기 (학교명 무시, 학년학기 완벽 분리) ---
+        // --- 🌟 초정밀 시험 기간 문자열 분석기 ---
         const parsePeriodString = (rawStr, rawGradeStr = '', fileName = '') => {
             const parseLogic = (str, gradeStr) => {
                 if (!str) return '';
                 let s = String(str).trim();
                 
-                // 파일명에서 학생이름(예: 강동원_)이 넘어왔을 경우 잘라냄
                 if (s.includes('_')) s = s.substring(s.indexOf('_') + 1);
                 
-                // 🚀 중요: 학교명 포함된 괄호 (해강중), [해운대고] 등 불필요한 부분 완벽 제거
                 s = s.replace(/[\(\[][가-힣a-zA-Z0-9\s]+(?:중|고|여중|남중|여고|남고|중학교|고등학교)[\)\]]/g, ''); 
                 
-                // 패턴 1: 대괄호 연속 패턴 (예: [공통수학1][성취도 평가])
                 const doubleBracketMatch = s.match(/\[(.*?)\]\s*\[(.*?)\]/);
                 if (doubleBracketMatch) {
                     let sem = doubleBracketMatch[1].replace(/성취도\s*평가|테스트/g, '').replace(/\s+/g, '').replace(/^[중고](?=\d-\d)/, '');
@@ -114,7 +111,6 @@
                     if (sem && exam) return `${sem} ${exam}`;
                 }
                 
-                // 패턴 2: 소괄호 포함 (예: 공통수학1 성취도 평가(복소수~연립방정식))
                 const parenMatch = s.match(/(.*?)(?:성취도\s*평가|테스트)?\s*[\(\[](.+?)[\)\]]/);
                 if (parenMatch) {
                     let sem = parenMatch[1].replace(/성취도\s*평가|테스트/g, '').replace(/\s+/g, '').replace(/^[중고](?=\d-\d)/, '');
@@ -126,7 +122,6 @@
                     if (sem && exam) return `${sem} ${exam}`;
                 }
                 
-                // 불필요한 단어 전역 제거 후 기존 중/고등 방식 패턴 검색
                 s = s.replace(/성취도\s*평가|테스트/g, '');
                 let semester = '';
                 let sMatch = s.match(/(\d)\s*-\s*(\d)/) || String(gradeStr).match(/(\d)\s*-\s*(\d)/);
@@ -155,17 +150,14 @@
                 return String(str).trim();
             };
 
-            // 1순위: 파일명에서 파악 (가장 정확)
             if (fileName) {
-                const baseName = fileName.split('.')[0].trim(); // 확장자 완벽 분리
+                const baseName = fileName.split('.')[0].trim();
                 const fileResult = parseLogic(baseName, '');
                 if (fileResult && fileResult.includes(' ')) return fileResult;
             }
             
-            // 2순위: 엑셀 내부 데이터 파싱
             let result = parseLogic(rawStr, rawGradeStr);
             
-            // 3순위: 내부 데이터로 파싱 실패 시 파일명으로 재시도
             if ((!result || result.length < 2 || !result.includes(' ')) && fileName) {
                 const baseName = fileName.split('.')[0].trim();
                 const fbResult = parseLogic(baseName, '');
@@ -213,7 +205,7 @@
                     catch(e) { jsonStr = decodeURIComponent(window.atob(safeStr)); }
                     payload = JSON.parse(jsonStr);
                 }
-                if (payload.period) return payload; // 구버전 호환
+                if (payload.period) return payload;
 
                 const dict = payload.d;
                 const results = payload.r.map(item => ({
@@ -478,38 +470,32 @@
             );
         };
 
-        // --- 모바일 전용 학생 뷰 컴포넌트 ---
+        // --- 📱 모바일 전용 학생 뷰 컴포넌트 ---
         const StudentReportMobileView = ({ data }) => {
             if (!data) return <div className="p-8 text-center h-screen flex items-center justify-center font-bold text-slate-500">데이터를 불러올 수 없습니다.</div>;
 
             return (
                 <div className="min-h-screen bg-slate-100 md:py-8 font-sans">
                     <div className="max-w-md mx-auto bg-white md:rounded-3xl shadow-2xl overflow-hidden min-h-screen md:min-h-0 pb-12">
-                        <div className="bg-indigo-600 p-6 pt-10 text-white text-center relative overflow-hidden">
+                        
+                        <div className="bg-indigo-600 p-6 pt-8 pb-16 text-white text-center relative overflow-hidden rounded-b-3xl shadow-md">
                             <div className="absolute opacity-10 -right-6 -top-6"><Icon name="award" size={150} /></div>
                             <p className="text-indigo-200 font-bold text-xs tracking-widest mb-1 relative z-10 uppercase">Math Report</p>
-                            <div className="flex flex-col items-center justify-center relative z-10 mb-6 gap-1">
-                                <h1 className="text-2xl font-black text-center">{data.period} 수학 성취도</h1>
+                            <div className="flex flex-col items-center justify-center relative z-10 gap-1.5">
+                                <h1 className="text-[22px] leading-snug font-black text-center whitespace-pre-wrap">{data.period} 수학 성취도</h1>
                                 {data.schoolName && (
-                                    <span className="text-sm font-bold text-indigo-200 bg-indigo-800/50 px-3 py-0.5 rounded-full">{data.schoolName}</span>
+                                    <span className="text-xs font-bold text-indigo-200 bg-indigo-800/50 px-3 py-1 rounded-full">{data.schoolName}</span>
                                 )}
-                            </div>
-                            
-                            <div className="bg-white/10 p-5 rounded-2xl backdrop-blur-sm relative z-10 flex flex-col items-center border border-white/20 shadow-lg">
-                                <span className="text-sm font-bold text-indigo-100 mb-1">{data.name} 학생 종합 점수</span>
-                                <div className="flex items-baseline gap-1">
-                                    <span className="text-6xl font-black tracking-tighter">{data.score}</span>
-                                    <span className="text-xl font-bold">점</span>
-                                </div>
                             </div>
                         </div>
 
+                        {/* 🌟 모바일 가로형 배치: [점수(좌)] + [강한/보완단원(우)] 🌟 */}
                         <div className="px-4 -mt-10 relative z-20 mb-6">
-                            <div className="bg-white rounded-2xl shadow-xl border border-slate-100 p-5 flex items-stretch gap-4">
-                                <div className="flex flex-col items-center justify-center flex-shrink-0 pr-4 border-r border-slate-100 min-w-[100px]">
+                            <div className="bg-white rounded-2xl shadow-xl border border-slate-100 p-5 flex items-center gap-4">
+                                <div className="flex flex-col items-center justify-center flex-shrink-0 pr-4 border-r border-slate-100 min-w-[90px]">
                                     <span className="text-[12px] font-bold text-slate-500 mb-1">{data.name} 학생</span>
                                     <div className="flex items-baseline gap-0.5 text-indigo-600">
-                                        <span className="text-4xl font-black tracking-tighter">{data.score}</span>
+                                        <span className="text-3xl font-black tracking-tighter">{data.score}</span>
                                         <span className="text-sm font-bold">점</span>
                                     </div>
                                 </div>
@@ -958,7 +944,7 @@
             };
 
             const deletePeriod = (period) => {
-                requestConfirm(`⚠️ [${period}] 시험의 모든 문항 및 학생 데이터를 정말 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`, async () => {
+                requestConfirm(`⚠️ [${period}] 시험의 모든 문항 및 학생 데이터를 정말 삭제하시겠습니까?\n이 작업은 되돌릴 수 일습니다.`, async () => {
                     try {
                         const batch = db.batch();
                         const examsSnap = await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('exams').where('period', '==', period).get();
