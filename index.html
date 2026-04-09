@@ -176,7 +176,7 @@
             return result;
         };
 
-        // --- URL 초압축 / 해제 엔진 (부분점수/상태 완벽 인코딩 호환) ---
+        // --- URL 초압축 / 해제 엔진 ---
         const encodeReportData = (analysisData, studentName) => {
             const dictMap = new Map();
             const dict = [];
@@ -330,7 +330,7 @@
                 "피타고라스 정리": "피타고라스 정리가 성립함을 다양한 방법으로 직접 설명해보고, 이를 평면도형의 길이나 넓이를 구하는 데 활용하는 훈련이 필요합니다.",
                 "경우의 수": "일상생활의 다양한 상황에서 일어날 수 있는 경우의 수를 빠짐없이, 중복되지 않게 논리적으로 구하는 사고방식이 필요합니다.",
                 "확률": "확률의 기본 성질을 이해하고, 상대도수로서의 확률의 의미를 바탕으로 실생활의 불확실한 상황을 수학적으로 해석하는 능력이 요구됩니다.",
-                "제곱근과 실수": "무리수의 개념을 직관적으로 이해하고, 수직선 위에 무리수를 나타내어 실수 체계의 구조를 파악하는 것이 핵심입니다.",
+                "제곱근과 실수": "무리수의 개념을 직관적으로 이해하고, 수직선 위에 무리수를 나타내어 실수 체계의 구조 파악하는 것이 핵심입니다.",
                 "다항식의 곱셈과 인수분해": "전개와 인수분해가 역관계임을 이해해야 합니다. 곱셈 공식을 기계적으로 외우기보다 도형의 넓이 등을 이용해 직접 유도해 보는 과정이 필요합니다.",
                 "이차방정식의 풀이": "인수분해나 완전제곱식을 이용해 해를 구하는 원리를 정확히 이해해야 합니다. 평가원 지침에 따르면 근의 공식 유도 과정을 직접 써보는 것이 중요합니다.",
                 "이차방정식의 활용": "주어진 실생활 문제를 이차방정식으로 모델링하고, 구한 해가 문제 상황(길이, 시간 등 양수 조건)에 맞는지 확인하는 습관을 들여보세요.",
@@ -450,7 +450,7 @@
                     {data.map((item, i) => {
                         const pct = item.total === 0 ? 0 : Math.round((item.correct / item.total) * 100);
                         const barColor = item.color || color || '#4f46e5';
-                        const isLightColor = item.name === '하'; // '하'일 경우 텍스트를 어둡게
+                        const isLightColor = item.name === '하'; 
                         
                         return (
                             <div key={i} className="flex flex-col gap-1.5 w-full">
@@ -478,9 +478,9 @@
             const type = r.t !== undefined ? r.t : r.type;
             const diff = r.d !== undefined ? r.d : r.difficulty;
             
-            const fullScore = r.fullScore !== undefined ? r.fullScore : (r.s !== undefined ? r.s : r.score);
+            const fullScore = r.fullScore !== undefined ? r.fullScore : (r.score !== undefined ? r.score : r.s);
             const status = r.status !== undefined ? r.status : (r.c !== undefined ? (r.c ? 'O' : 'X') : (r.isCorrect ? 'O' : 'X'));
-            const earnedScore = r.earnedScore !== undefined ? r.earnedScore : (r.c || r.isCorrect ? fullScore : 0);
+            const earnedScore = r.earnedScore !== undefined ? r.earnedScore : (status === 'O' ? fullScore : 0);
 
             let statusIcon;
             if (status === 'O') {
@@ -701,7 +701,7 @@
                 }
             }, [optionsData.examTypes, filters.examType]);
 
-            // 🌟 점수 파싱 및 상태계산 (O, X, △)
+            // 🌟 점수 파싱 및 상태계산 (비율 기반 배점 적용) 🌟
             const analysisData = useMemo(() => {
                 if (!filters.semester || !filters.examType || !filters.studentName) return null;
                 const targetPeriod = `${filters.semester} ${filters.examType}`;
@@ -713,8 +713,8 @@
 
                 let totalScoreCalc = 0;
                 const results = targetExams.map(ex => {
-                    const studentAns = targetStudent.responses[ex.qNum]; // 'O', 'X', 숫자 형태
-                    const fullScore = ex.score || 0;
+                    const studentAns = targetStudent.responses[ex.qNum]; 
+                    const fullScore = ex.score || 0; 
                     let earnedScore = 0;
                     let status = 'X';
 
@@ -724,7 +724,22 @@
                     } else if (studentAns === 'X' || studentAns === '오답' || studentAns === undefined || studentAns === '') {
                         earnedScore = 0;
                         status = 'X';
+                    } else if (typeof studentAns === 'object' && studentAns !== null) {
+                        // 학생 파일 기준 (점수 / 배점) 비율을 바탕으로 원래 시험지 배점(fullScore) 환산!
+                        const ratio = studentAns.studentFull > 0 ? (studentAns.earned / studentAns.studentFull) : 0;
+                        earnedScore = fullScore * ratio;
+                        earnedScore = Math.round(earnedScore * 10) / 10; // 소수점 1자리 반올림
+                        
+                        if (earnedScore >= fullScore && fullScore > 0) {
+                            earnedScore = fullScore;
+                            status = 'O';
+                        } else if (earnedScore > 0) {
+                            status = '△';
+                        } else {
+                            status = 'X';
+                        }
                     } else {
+                        // fallback (object가 아니고 숫자로 바로 들어온 경우, 거의 없음)
                         const numAns = parseFloat(studentAns);
                         if (!isNaN(numAns)) {
                             earnedScore = numAns;
@@ -751,7 +766,7 @@
                 const unitStats = {};
                 results.forEach(r => {
                     if(!unitStats[r.majorUnit]) unitStats[r.majorUnit] = { total: 0, correct: 0 };
-                    unitStats[r.majorUnit].total++; if(r.isCorrect) unitStats[r.majorUnit].correct++;
+                    unitStats[r.majorUnit].total++; if(r.earnedScore > 0) unitStats[r.majorUnit].correct++;
                 });
                 const unitData = Object.entries(unitStats).map(([name, stats]) => ({ name, ...stats }));
 
@@ -763,14 +778,14 @@
                     else if (d.includes('하') || d.includes('쉬움') || d.includes('1') || d.includes('2')) d = '하';
                     else d = '중';
                     if(!diffStats[d]) diffStats[d] = {total:0, correct:0};
-                    diffStats[d].total++; if(r.isCorrect) diffStats[d].correct++;
+                    diffStats[d].total++; if(r.earnedScore > 0) diffStats[d].correct++;
                 });
                 
                 const diffData = Object.entries(diffStats).map(([name, stats]) => {
-                    let itemColor = '#10b981'; // 기본 초록
-                    if (name === '상') itemColor = '#f97316'; // 주황
-                    else if (name === '중') itemColor = '#10b981'; // 초록
-                    else if (name === '하') itemColor = '#fde047'; // 연노랑
+                    let itemColor = '#10b981'; 
+                    if (name === '상') itemColor = '#f97316'; 
+                    else if (name === '중') itemColor = '#10b981'; 
+                    else if (name === '하') itemColor = '#fde047'; 
                     return { name, ...stats, color: itemColor };
                 }).filter(d=>d.total>0).sort((a,b) => diffOrder.indexOf(b.name) - diffOrder.indexOf(a.name));
 
@@ -779,7 +794,7 @@
                     let t = String(r.type || '기타');
                     if (t.includes('객관')) t = '객관식'; else if (t.includes('주관') || t.includes('서술')) t = '주관식/서술형'; else t = '기타';
                     if(!typeStats[t]) typeStats[t] = { total: 0, correct: 0 };
-                    typeStats[t].total++; if(r.isCorrect) typeStats[t].correct++;
+                    typeStats[t].total++; if(r.earnedScore > 0) typeStats[t].correct++;
                 });
 
                 let schoolName = targetExams[0]?.school || '';
@@ -880,10 +895,20 @@
                                             const qNum = parseInt(qNumStr);
                                             // 🌟 3선생님, 1학생 등에서 숫자만 쏙 골라내는 필터
                                             const rawScore = getVal(['점수', '취득점수']);
+                                            const rawStudentFull = getVal(['배점']); // 학생 CSV의 로컬 배점
+                                            
                                             const numericMatch = rawScore.replace(/[^0-9.]/g, ''); 
+                                            const numericFullMatch = rawStudentFull.replace(/[^0-9.]/g, ''); 
                                             
                                             if (numericMatch !== '') {
-                                                responses[qNum] = parseFloat(numericMatch);
+                                                const earned = parseFloat(numericMatch);
+                                                const sFull = parseFloat(numericFullMatch);
+                                                if (!isNaN(sFull) && sFull > 0) {
+                                                    // 학생 파일에서 인식한 내 배점과 내 점수를 객체로 전달!
+                                                    responses[qNum] = { earned: earned, studentFull: sFull };
+                                                } else {
+                                                    responses[qNum] = earned;
+                                                }
                                             } else {
                                                 responses[qNum] = (rawScore.toUpperCase() === 'O' || rawScore === '정답') ? 'O' : 'X';
                                             }
@@ -911,7 +936,6 @@
                                             if (qNumStr) {
                                                 const qNum = parseInt(qNumStr);
                                                 if (qNum > 0 && qNum <= 100) {
-                                                    // 가로형은 점수가 'O' 나 'X' 로 들어가거나 숫자로 들어감
                                                     responses[qNum] = String(row[k]).trim().toUpperCase();
                                                 }
                                             }
