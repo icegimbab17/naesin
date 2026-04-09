@@ -37,20 +37,29 @@
             overflow: visible; 
         }
 
+        /* 🖨️ 인쇄용 특수 여백 조정 및 페이지 고정 설정 */
         @media print {
+            @page { size: A4 portrait; margin: 0; }
             body { background-color: white; margin: 0; padding: 0; }
             .no-print { display: none !important; }
             .a4-page {
                 box-shadow: none;
                 margin: 0;
-                padding: 10mm; 
+                padding: 15mm; /* 인쇄 시 여백을 살짝 줄여 공간 확보 */
                 border-radius: 0;
                 page-break-after: always;
-                min-height: auto;
-                height: auto !important; 
+            }
+            /* 1페이지: 높이를 297mm로 강제 고정하여 절대 2장으로 안 넘어가게 함 */
+            .print-page-1 {
+                height: 297mm !important;
+                overflow: hidden !important; 
+            }
+            /* 2페이지: 문항이 많으면 자연스럽게 3, 4장으로 넘어가도록 auto 설정 */
+            .print-page-auto {
+                height: auto !important;
+                min-height: 297mm;
                 overflow: visible !important;
             }
-            .a4-page:last-child { page-break-after: auto; }
             * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
             .break-inside-avoid { break-inside: avoid; page-break-inside: avoid; }
         }
@@ -73,7 +82,7 @@
         const ReactDOM = window.ReactDOM;
         const { useState, useMemo, useRef, useEffect } = React;
 
-        // --- Firebase Config ---
+        // --- Firebase Config (실제 설정값 반영) ---
         const firebaseConfig = {
             apiKey: "AIzaSyC82hnDtesWHC2Xm3P36V1kKQfl-1RIhtM",
             authDomain: "math-evaluation-system.firebaseapp.com",
@@ -238,7 +247,15 @@
                 const totalScore = maxScore > 0 ? Math.round(totalScoreCalc * 10) / 10 : Math.round((results.filter(r => r.isCorrect).length / results.length) * 100);
                 const diffOrder = ['하', '중', '상', '최상'];
                 const unitData = Object.entries(unitStats).map(([name, stats]) => ({ name, ...stats }));
-                const diffData = Object.entries(diffStats).map(([name, stats]) => ({ name, ...stats })).filter(d=>d.total>0).sort((a,b) => diffOrder.indexOf(b.name) - diffOrder.indexOf(a.name));
+                
+                // 난이도별 색상 적용 (공유 화면)
+                const diffData = Object.entries(diffStats).map(([name, stats]) => {
+                    let itemColor = '#10b981'; // 기본 초록
+                    if (name === '상') itemColor = '#f97316'; // 주황
+                    else if (name === '중') itemColor = '#10b981'; // 초록
+                    else if (name === '하') itemColor = '#fde047'; // 연노랑
+                    return { name, ...stats, color: itemColor };
+                }).filter(d=>d.total>0).sort((a,b) => diffOrder.indexOf(b.name) - diffOrder.indexOf(a.name));
 
                 const analysisDataProxy = { unitData, totalScore, results, targetPeriod: payload.p, typeStats };
                 const comments = generateAIComment(analysisDataProxy);
@@ -415,6 +432,9 @@
                 <div className="flex flex-col gap-4 w-full">
                     {data.map((item, i) => {
                         const pct = item.total === 0 ? 0 : Math.round((item.correct / item.total) * 100);
+                        const barColor = item.color || color || '#4f46e5';
+                        const isLightColor = item.name === '하'; // '하'일 경우 텍스트를 어둡게
+                        
                         return (
                             <div key={i} className="flex flex-col gap-1.5 w-full">
                                 <div className="flex justify-between items-end w-full">
@@ -422,8 +442,8 @@
                                     <span className="text-xs text-slate-400 font-bold shrink-0">{item.correct}/{item.total}</span>
                                 </div>
                                 <div className="w-full h-4 bg-slate-100 rounded-full overflow-hidden flex relative shadow-inner">
-                                    <div className="h-full rounded-full flex items-center justify-end px-2" style={{ width: `${pct}%`, backgroundColor: color || '#4f46e5', transition: 'width 1s' }}>
-                                        {pct > 15 && <span className="text-[10px] text-white font-bold">{pct}%</span>}
+                                    <div className="h-full rounded-full flex items-center justify-end px-2" style={{ width: `${pct}%`, backgroundColor: barColor, transition: 'width 1s' }}>
+                                        {pct > 15 && <span className={`text-[10px] font-bold ${isLightColor ? 'text-slate-700' : 'text-white'}`}>{pct}%</span>}
                                     </div>
                                     {pct <= 15 && <span className="absolute left-2 top-1/2 transform -translate-y-1/2 text-[10px] text-slate-500 font-bold">{pct}%</span>}
                                 </div>
@@ -477,25 +497,31 @@
             return (
                 <div className="min-h-screen bg-slate-100 md:py-8 font-sans">
                     <div className="max-w-md mx-auto bg-white md:rounded-3xl shadow-2xl overflow-hidden min-h-screen md:min-h-0 pb-12">
-                        
-                        <div className="bg-indigo-600 p-6 pt-8 pb-16 text-white text-center relative overflow-hidden rounded-b-3xl shadow-md">
+                        <div className="bg-indigo-600 p-6 pt-10 text-white text-center relative overflow-hidden">
                             <div className="absolute opacity-10 -right-6 -top-6"><Icon name="award" size={150} /></div>
                             <p className="text-indigo-200 font-bold text-xs tracking-widest mb-1 relative z-10 uppercase">Math Report</p>
-                            <div className="flex flex-col items-center justify-center relative z-10 gap-1.5">
-                                <h1 className="text-[22px] leading-snug font-black text-center whitespace-pre-wrap">{data.period} 수학 성취도</h1>
+                            <div className="flex flex-col items-center justify-center relative z-10 mb-6 gap-1">
+                                <h1 className="text-2xl font-black text-center">{data.period} 수학 성취도</h1>
                                 {data.schoolName && (
-                                    <span className="text-xs font-bold text-indigo-200 bg-indigo-800/50 px-3 py-1 rounded-full">{data.schoolName}</span>
+                                    <span className="text-sm font-bold text-indigo-200 bg-indigo-800/50 px-3 py-0.5 rounded-full">{data.schoolName}</span>
                                 )}
+                            </div>
+                            
+                            <div className="bg-white/10 p-5 rounded-2xl backdrop-blur-sm relative z-10 flex flex-col items-center border border-white/20 shadow-lg">
+                                <span className="text-sm font-bold text-indigo-100 mb-1">{data.name} 학생 종합 점수</span>
+                                <div className="flex items-baseline gap-1">
+                                    <span className="text-6xl font-black tracking-tighter">{data.score}</span>
+                                    <span className="text-xl font-bold">점</span>
+                                </div>
                             </div>
                         </div>
 
-                        {/* 🌟 모바일 가로형 배치: [점수(좌)] + [강한/보완단원(우)] 🌟 */}
                         <div className="px-4 -mt-10 relative z-20 mb-6">
-                            <div className="bg-white rounded-2xl shadow-xl border border-slate-100 p-5 flex items-center gap-4">
+                            <div className="bg-white rounded-2xl shadow-xl border border-slate-100 p-5 flex items-stretch gap-4">
                                 <div className="flex flex-col items-center justify-center flex-shrink-0 pr-4 border-r border-slate-100 min-w-[90px]">
                                     <span className="text-[12px] font-bold text-slate-500 mb-1">{data.name} 학생</span>
                                     <div className="flex items-baseline gap-0.5 text-indigo-600">
-                                        <span className="text-3xl font-black tracking-tighter">{data.score}</span>
+                                        <span className="text-4xl font-black tracking-tighter">{data.score}</span>
                                         <span className="text-sm font-bold">점</span>
                                     </div>
                                 </div>
@@ -695,7 +721,15 @@
                     if(!diffStats[d]) diffStats[d] = {total:0, correct:0};
                     diffStats[d].total++; if(r.isCorrect) diffStats[d].correct++;
                 });
-                const diffData = Object.entries(diffStats).map(([name, stats]) => ({ name, ...stats })).filter(d=>d.total>0).sort((a,b) => diffOrder.indexOf(b.name) - diffOrder.indexOf(a.name));
+                
+                // 🌟 선생님 화면 난이도별 색상 적용 🌟
+                const diffData = Object.entries(diffStats).map(([name, stats]) => {
+                    let itemColor = '#10b981'; // 기본 초록
+                    if (name === '상') itemColor = '#f97316'; // 주황
+                    else if (name === '중') itemColor = '#10b981'; // 초록
+                    else if (name === '하') itemColor = '#fde047'; // 연노랑
+                    return { name, ...stats, color: itemColor };
+                }).filter(d=>d.total>0).sort((a,b) => diffOrder.indexOf(b.name) - diffOrder.indexOf(a.name));
 
                 const typeStats = {};
                 results.forEach(r => {
@@ -944,7 +978,7 @@
             };
 
             const deletePeriod = (period) => {
-                requestConfirm(`⚠️ [${period}] 시험의 모든 문항 및 학생 데이터를 정말 삭제하시겠습니까?\n이 작업은 되돌릴 수 일습니다.`, async () => {
+                requestConfirm(`⚠️ [${period}] 시험의 모든 문항 및 학생 데이터를 정말 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`, async () => {
                     try {
                         const batch = db.batch();
                         const examsSnap = await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('exams').where('period', '==', period).get();
@@ -1079,9 +1113,9 @@
 
                     {analysisData && (
                         <div className="pt-8 no-print:bg-slate-100">
-                            {/* --- Page 1: 종합 성취도 --- */}
-                            <div className="a4-page bg-white">
-                                <div className="border-b-4 border-indigo-900 pb-6 mb-8 flex justify-between items-end">
+                            {/* --- 🖨️ Page 1: 종합 성취도 (여기서 인쇄 여백과 크기가 조정됩니다!) --- */}
+                            <div className="a4-page bg-white print-page-1">
+                                <div className="border-b-4 border-indigo-900 pb-6 mb-8 print:pb-4 print:mb-4 flex justify-between items-end">
                                     <div>
                                         <div className="text-indigo-600 font-black text-xs tracking-widest mb-1 uppercase tracking-tighter">Achievement Report</div>
                                         <div className="flex items-baseline gap-3">
@@ -1099,7 +1133,7 @@
                                     </div>
                                 </div>
 
-                                <div className="flex gap-6 mb-10">
+                                <div className="flex gap-6 mb-10 print:mb-5">
                                     <div className="w-1/3 bg-indigo-600 rounded-2xl p-6 text-white flex flex-col justify-center items-center relative overflow-hidden shadow-xl">
                                         <div className="absolute -right-4 -top-4 opacity-10"><Icon name="target" size={120}/></div>
                                         <span className="text-[10px] font-bold uppercase opacity-70 tracking-widest z-10">Total Score</span>
@@ -1113,8 +1147,8 @@
                                     </div>
 
                                     <div className="w-2/3 bg-slate-50 rounded-2xl border border-slate-200 p-6 flex flex-col justify-center shadow-sm">
-                                        <h3 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2 font-sans tracking-tight"><Icon name="sparkles" size={18} className="text-amber-500"/> 학습 종합 분석</h3>
-                                        <div className="grid grid-cols-2 gap-4 mb-4">
+                                        <h3 className="text-lg font-black text-slate-800 mb-4 print:mb-2 flex items-center gap-2 font-sans tracking-tight"><Icon name="sparkles" size={18} className="text-amber-500"/> 학습 종합 분석</h3>
+                                        <div className="grid grid-cols-2 gap-4 mb-4 print:mb-2">
                                             <div className="bg-white p-3 rounded-xl border border-emerald-100 flex items-start gap-3 shadow-sm">
                                                 <div className="bg-emerald-100 p-2 rounded-lg text-emerald-600 shrink-0"><Icon name="trending-up" size={18}/></div>
                                                 <div className="min-w-0 flex-1">
@@ -1135,26 +1169,26 @@
                                             </div>
                                         </div>
                                         <div className="text-[13.5px] text-slate-700 leading-relaxed font-medium bg-white p-4 rounded-xl border border-slate-100 shadow-sm whitespace-pre-wrap break-keep">
-                                            <span className="font-bold text-indigo-600 block mb-1">💡 전문 학습 가이드</span><br/>{comments.method}
+                                            <span className="font-bold text-indigo-600 block mb-1">💡 전문 학습 가이드</span>{comments.method}
                                         </div>
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-10 mb-8">
-                                    <div className="col-span-1 border-r border-slate-100 pr-10">
-                                        <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2 border-b-2 border-indigo-50 pb-2 tracking-tight"><Icon name="bar-chart-2" className="text-indigo-500" size={18}/> 단원별 성취도</h3>
+                                <div className="grid grid-cols-2 gap-10 print:gap-6 mb-8 print:mb-2">
+                                    <div className="col-span-1 border-r border-slate-100 pr-10 print:pr-6">
+                                        <h3 className="text-lg font-black text-slate-800 mb-6 print:mb-3 flex items-center gap-2 border-b-2 border-indigo-50 pb-2 tracking-tight"><Icon name="bar-chart-2" className="text-indigo-500" size={18}/> 단원별 성취도</h3>
                                         <HorizontalBarChart data={analysisData.unitData} color="#4f46e5" />
                                     </div>
                                     
-                                    <div className="col-span-1 flex flex-col gap-8">
+                                    <div className="col-span-1 flex flex-col gap-8 print:gap-4">
                                         <div>
-                                            <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2 border-b-2 border-emerald-50 pb-2 tracking-tight"><Icon name="layers" className="text-emerald-500" size={18}/> 난이도별 성취도</h3>
+                                            <h3 className="text-lg font-black text-slate-800 mb-6 print:mb-3 flex items-center gap-2 border-b-2 border-emerald-50 pb-2 tracking-tight"><Icon name="layers" className="text-emerald-500" size={18}/> 난이도별 성취도</h3>
                                             <HorizontalBarChart data={analysisData.diffData} color="#10b981" />
                                         </div>
                                         
                                         {analysisData.typeStats && Object.keys(analysisData.typeStats).length > 0 && (
                                             <div>
-                                                <h3 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2 border-b-2 border-amber-50 pb-2 tracking-tight"><Icon name="pie-chart" className="text-amber-500" size={18}/> 문제유형별 정답률</h3>
+                                                <h3 className="text-lg font-black text-slate-800 mb-4 print:mb-2 flex items-center gap-2 border-b-2 border-amber-50 pb-2 tracking-tight"><Icon name="pie-chart" className="text-amber-500" size={18}/> 문제유형별 정답률</h3>
                                                 <div className="flex flex-wrap gap-4 justify-center md:justify-start w-full">
                                                     {Object.entries(analysisData.typeStats).map(([type, stats]) => (
                                                         <DonutChart key={type} data={[{name: '정답', value: stats.correct, color: '#4f46e5'}, {name: '오답', value: stats.total-stats.correct, color: '#e2e8f0'}]} title={type} />
@@ -1165,13 +1199,13 @@
                                     </div>
                                 </div>
 
-                                <div className="absolute bottom-10 left-0 right-0 text-center text-[10px] text-slate-300 font-bold tracking-[0.2em] uppercase font-sans">
+                                <div className="absolute bottom-10 print:bottom-6 left-0 right-0 text-center text-[10px] text-slate-300 font-bold tracking-[0.2em] uppercase font-sans">
                                     Academic Analysis System — Page 1
                                 </div>
                             </div>
 
-                            {/* --- Page 2: 상세 정오표 --- */}
-                            <div className="a4-page bg-white flex flex-col">
+                            {/* --- 🖨️ Page 2: 상세 정오표 (내용이 길면 알아서 넘어갑니다) --- */}
+                            <div className="a4-page bg-white flex flex-col print-page-auto">
                                 <div className="border-b-2 border-slate-200 pb-4 mb-6 flex items-center justify-between">
                                     <h2 className="text-2xl font-black text-slate-900 flex items-center gap-2 tracking-tight">
                                         <Icon name="check-square" size={24} className="text-indigo-600"/> 문항별 상세 정오표
