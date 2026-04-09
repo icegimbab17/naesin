@@ -73,7 +73,7 @@
         const ReactDOM = window.ReactDOM;
         const { useState, useMemo, useRef, useEffect } = React;
 
-        // --- Firebase Config (실제 설정값 반영) ---
+        // --- Firebase Config ---
         const firebaseConfig = {
             apiKey: "AIzaSyC82hnDtesWHC2Xm3P36V1kKQfl-1RIhtM",
             authDomain: "math-evaluation-system.firebaseapp.com",
@@ -96,13 +96,13 @@
                 if (!str) return '';
                 str = String(str).trim();
                 
-                // 패턴 1: 괄호 포함 (예: 공통수학1 성취도 평가(복소수~연립방정식) 또는 기말고사)
+                // 패턴 1: 괄호 포함 (예: 공통수학1 성취도 평가(복소수~연립방정식))
                 const parenMatch = str.match(/(.*?)\((.*?)\)/);
                 if (parenMatch) {
                     let sem = parenMatch[1].replace(/성취도\s*평가/g, '').replace(/테스트/g, '').trim();
-                    sem = sem.replace(/\s+/g, ''); // 띄어쓰기 제거하여 '공통수학1' 등으로 압축
+                    sem = sem.replace(/\s+/g, ''); 
                     let exam = parenMatch[2].trim(); 
-                    exam = exam.replace(/고사$/, ''); // 기말고사 -> 기말, 중간고사 -> 중간
+                    exam = exam.replace(/고사$/, ''); 
                     if (sem && exam) return `${sem} ${exam}`;
                 }
                 
@@ -164,13 +164,8 @@
             };
 
             const r = analysisData.results.map(res => [
-                res.qNum,
-                getDictIdx(res.majorUnit),
-                getDictIdx(res.minorUnit),
-                getDictIdx(res.type),
-                getDictIdx(res.difficulty),
-                res.isCorrect ? 1 : 0,
-                res.score || 0
+                res.qNum, getDictIdx(res.majorUnit), getDictIdx(res.minorUnit),
+                getDictIdx(res.type), getDictIdx(res.difficulty), res.isCorrect ? 1 : 0, res.score || 0
             ]);
 
             const payload = { 
@@ -204,7 +199,7 @@
                     payload = JSON.parse(jsonStr);
                 }
                 
-                if (payload.period) return payload;
+                if (payload.period) return payload; // 구버전 호환
 
                 const dict = payload.d;
                 const results = payload.r.map(item => ({
@@ -323,6 +318,7 @@
                 "함수의 극한": "직관적인 그래프 해석을 통해 극한의 개념을 이해하고, 극한에 대한 기본 성질을 이용하여 함수의 극한값을 구하는 능력이 필요합니다."
             };
 
+            // 유사도 기반 매칭
             let matchedGuideline = "";
             const cleanWeakUnit = primaryWeakUnit.replace(/\s+/g, '');
             for (const key in kiceGuidelines) {
@@ -433,7 +429,7 @@
                         return (
                             <div key={i} className="flex flex-col gap-1.5 w-full">
                                 <div className="flex justify-between items-end w-full">
-                                    <span className="text-[14px] font-bold text-slate-700 leading-tight flex-1 pr-2 whitespace-normal break-words">{item.name}</span>
+                                    <span className="text-[14px] font-bold text-slate-700 leading-tight flex-1 pr-2 whitespace-normal break-keep">{item.name}</span>
                                     <span className="text-xs text-slate-400 font-bold shrink-0">{item.correct}/{item.total}</span>
                                 </div>
                                 <div className="w-full h-4 bg-slate-100 rounded-full overflow-hidden flex relative shadow-inner">
@@ -748,9 +744,8 @@
 
                 // 학교명 추출 및 연도 결합 로직
                 let schoolName = targetExams[0]?.school || '';
-                const rawPeriod = targetExams[0]?.period || ''; // 출제시기
+                const rawPeriod = targetExams[0]?.rawPeriod || ''; // 파싱할 때 보존해둔 원본 출제시기 문자열
                 if (schoolName) {
-                    // 출제시기에 202X년이 포함되어 있으면 학교명 앞에 붙임
                     const yearMatch = String(rawPeriod).match(/20\d{2}/);
                     if (yearMatch && !schoolName.includes('년')) {
                         schoolName = `${yearMatch[0]}년 ${schoolName}`;
@@ -791,6 +786,7 @@
                                     
                                     return {
                                         period: parsedPeriod,
+                                        rawPeriod: rawPeriod, // 연도 추출을 위해 원본 유지
                                         school: getVal(['학교명', '학교']),
                                         qNum: parseInt(getVal(['문항번호', '번호', '문항'])) || 0,
                                         type: getVal(['문항유형', '유형', '형태']),
@@ -801,7 +797,7 @@
                                     };
                                 }).filter(e => e.qNum > 0);
                                 
-                                // 화면에 1초만에 보이게 즉시 로컬 업데이트
+                                // 화면에 즉시 업데이트
                                 setExams(prev => [...prev.filter(p => !parsedExams.some(n => n.period === p.period)), ...parsedExams]);
                                 addedExams += parsedExams.length;
 
@@ -811,6 +807,7 @@
                                 });
                             } 
                             else if (keys.includes('문제') && (keys.includes('정답') || keys.includes('점수'))) {
+                                // 세로형 학생 데이터 파싱 (강동원_중2-1.csv 같은 형태)
                                 setExams(prevExams => {
                                     const fallbackPeriod = prevExams.length > 0 ? prevExams[0].period : '';
                                     let studentName = "학생";
@@ -845,17 +842,16 @@
 
                                     const parsedStudents = [{ name: studentName, period: finalPeriod, responses }];
                                     
-                                    // 로컬 즉각 업데이트
                                     setStudents(prev => [...prev.filter(p => !(p.name === studentName && p.period === finalPeriod)), ...parsedStudents]);
                                     addedStudents += 1;
 
-                                    // 백그라운드 파이어베이스 저장
                                     db.collection('artifacts').doc(appId).collection('public').doc('data').collection('students').doc(`${studentName}_${finalPeriod}`).set({ name: studentName, period: finalPeriod, responses }).catch(e => console.warn(e));
 
                                     return prevExams;
                                 });
                             }
                             else if (keys.includes('이름') || keys.includes('학생') || keys.includes('성명') || (keys.includes('1') && keys.includes('2'))) {
+                                // 가로형 학생 데이터 파싱
                                 setExams(prevExams => {
                                     const fallbackPeriod = prevExams.length > 0 ? prevExams[0].period : '';
 
@@ -929,11 +925,23 @@
                             }
                             
                             let wb;
-                            // 🌟 탭 분리형 CSV 파일 강제 인식 로직
+                            // 🌟 탭 분리형 CSV 파일 강제 인식 엔진 적용
                             if (file.name.toLowerCase().endsWith('.csv') || file.name.toLowerCase().endsWith('.tsv')) {
                                 if (text.includes('\t')) {
-                                    const rows = text.trim().split(/\r?\n/).map(l => l.split('\t'));
-                                    wb = { Sheets: { Sheet1: XLSX.utils.aoa_to_sheet(rows) }, SheetNames: ['Sheet1'] };
+                                    const lines = text.trim().split(/\r?\n/).filter(l => l.trim() !== '');
+                                    if(lines.length > 0) {
+                                        const headers = lines[0].split('\t').map(h => h.trim());
+                                        const json = [];
+                                        for(let i=1; i<lines.length; i++){
+                                            const cols = lines[i].split('\t');
+                                            const rowObj = {};
+                                            headers.forEach((h, idx) => rowObj[h] = cols[idx] ? cols[idx].trim() : '');
+                                            json.push(rowObj);
+                                        }
+                                        wb = { Sheets: { Sheet1: XLSX.utils.json_to_sheet(json) }, SheetNames: ['Sheet1'] };
+                                    } else {
+                                        wb = XLSX.read(text, { type: 'string' });
+                                    }
                                 } else {
                                     wb = XLSX.read(text, { type: 'string' });
                                 }
@@ -941,7 +949,8 @@
                                 wb = XLSX.read(new Uint8Array(buffer), { type: 'array' });
                             }
                             
-                            processWorkbook(wb);
+                            if (wb) processWorkbook(wb);
+                            else resolve();
                         } catch (err) {
                             console.error(err);
                             resolve();
@@ -955,7 +964,7 @@
                 if (addedExams > 0 || addedStudents > 0) {
                     showToast(`✅ 업로드 완료! (시험 ${addedExams}건, 학생 ${addedStudents}명)`, 'success');
                 } else {
-                    showToast(`❌ 인식된 데이터가 없습니다. 파일 양식 또는 인코딩을 확인해주세요.`, 'error');
+                    showToast(`❌ 인식된 데이터가 없습니다. 파일 양식을 다시 확인해주세요.`, 'error');
                 }
                 
                 e.target.value = '';
@@ -1240,17 +1249,17 @@
                                                 <div className="bg-rose-100 p-2 rounded-lg text-rose-600 shrink-0"><Icon name="trending-down" size={18}/></div>
                                                 <div className="min-w-0 flex-1">
                                                     <p className="text-[10px] text-slate-400 font-bold mb-1">
-                                                        {comments.weak.includes('완벽함') || comments.weak.includes('우수함') || comments.weak.includes('양호함') ? '특이사항' : '보완 단원'}
+                                                        {comments.weak.includes('완벽함') || comments.weak.includes('양호함') ? '특이사항' : '보완 단원'}
                                                     </p>
-                                                    <p className={`text-[13px] font-black whitespace-normal break-keep leading-snug ${comments.weak.includes('완벽함') || comments.weak.includes('우수함') || comments.weak.includes('양호함') ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                    <p className={`text-[13px] font-black whitespace-normal break-keep leading-snug ${comments.weak.includes('완벽함') ? 'text-emerald-600' : 'text-slate-800'}`}>
                                                         {comments.weak}
                                                     </p>
                                                 </div>
                                             </div>
                                         </div>
-                                        <p className="text-[13.5px] text-slate-700 leading-relaxed font-medium bg-white p-4 rounded-xl border border-slate-100 shadow-sm whitespace-pre-wrap break-keep">
+                                        <div className="text-[13.5px] text-slate-700 leading-relaxed font-medium bg-white p-4 rounded-xl border border-slate-100 shadow-sm whitespace-pre-wrap break-keep">
                                             <span className="font-bold text-indigo-600 block mb-1">💡 전문 학습 가이드</span><br/>{comments.method}
-                                        </p>
+                                        </div>
                                     </div>
                                 </div>
 
