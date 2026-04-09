@@ -45,16 +45,14 @@
             .a4-page {
                 box-shadow: none;
                 margin: 0;
-                padding: 15mm; /* 인쇄 시 여백을 살짝 줄여 공간 확보 */
+                padding: 15mm; 
                 border-radius: 0;
                 page-break-after: always;
             }
-            /* 1페이지: 높이를 297mm로 강제 고정하여 절대 2장으로 안 넘어가게 함 */
             .print-page-1 {
                 height: 297mm !important;
                 overflow: hidden !important; 
             }
-            /* 2페이지: 문항이 많으면 자연스럽게 3, 4장으로 넘어가도록 auto 설정 */
             .print-page-auto {
                 height: auto !important;
                 min-height: 297mm;
@@ -82,7 +80,7 @@
         const ReactDOM = window.ReactDOM;
         const { useState, useMemo, useRef, useEffect } = React;
 
-        // --- Firebase Config (실제 설정값 반영) ---
+        // --- Firebase Config ---
         const firebaseConfig = {
             apiKey: "AIzaSyC82hnDtesWHC2Xm3P36V1kKQfl-1RIhtM",
             authDomain: "math-evaluation-system.firebaseapp.com",
@@ -178,7 +176,7 @@
             return result;
         };
 
-        // --- URL 초압축 / 해제 엔진 ---
+        // --- URL 초압축 / 해제 엔진 (부분점수/상태 완벽 인코딩 호환) ---
         const encodeReportData = (analysisData, studentName) => {
             const dictMap = new Map();
             const dict = [];
@@ -193,7 +191,10 @@
 
             const r = analysisData.results.map(res => [
                 res.qNum, getDictIdx(res.majorUnit), getDictIdx(res.minorUnit),
-                getDictIdx(res.type), getDictIdx(res.difficulty), res.isCorrect ? 1 : 0, res.score || 0
+                getDictIdx(res.type), getDictIdx(res.difficulty), 
+                res.status === 'O' ? 2 : (res.status === '△' ? 1 : 0),
+                res.fullScore || 0,
+                res.earnedScore || 0
             ]);
 
             const payload = { p: analysisData.targetPeriod, n: studentName, d: dict, r: r, s: analysisData.schoolName || '' };
@@ -217,18 +218,35 @@
                 if (payload.period) return payload;
 
                 const dict = payload.d;
-                const results = payload.r.map(item => ({
-                    qNum: item[0], majorUnit: dict[item[1]], minorUnit: dict[item[2]],
-                    type: dict[item[3]], difficulty: dict[item[4]], isCorrect: item[5] === 1, score: item[6]
-                }));
+                const results = payload.r.map(item => {
+                    const isOldFormat = item.length === 7;
+                    const fullScore = isOldFormat ? item[6] : item[6];
+                    let status, earnedScore;
+
+                    if (isOldFormat) {
+                        status = item[5] === 1 ? 'O' : 'X';
+                        earnedScore = item[5] === 1 ? fullScore : 0;
+                    } else {
+                        status = item[5] === 2 ? 'O' : (item[5] === 1 ? '△' : 'X');
+                        earnedScore = item[7];
+                    }
+
+                    return {
+                        qNum: item[0], majorUnit: dict[item[1]], minorUnit: dict[item[2]],
+                        type: dict[item[3]], difficulty: dict[item[4]], 
+                        isCorrect: earnedScore > 0, 
+                        score: fullScore, fullScore: fullScore, earnedScore: earnedScore, status: status
+                    };
+                });
 
                 let totalScoreCalc = 0, maxScore = 0;
                 const unitStats = {}, diffStats = { '상': {total:0, correct:0}, '중': {total:0, correct:0}, '하': {total:0, correct:0} }, typeStats = {};
 
                 results.forEach(r => {
-                    totalScoreCalc += r.isCorrect ? r.score : 0; maxScore += r.score;
+                    totalScoreCalc += r.earnedScore !== undefined ? r.earnedScore : (r.isCorrect ? r.score : 0); 
+                    maxScore += r.fullScore !== undefined ? r.fullScore : r.score;
                     if(!unitStats[r.majorUnit]) unitStats[r.majorUnit] = { total: 0, correct: 0 };
-                    unitStats[r.majorUnit].total++; if(r.isCorrect) unitStats[r.majorUnit].correct++;
+                    unitStats[r.majorUnit].total++; if(r.earnedScore > 0) unitStats[r.majorUnit].correct++;
 
                     let d = String(r.difficulty || '중');
                     if (d.includes('상') || d.includes('어려움') || d.includes('7') || d.includes('8')) d = '상';
@@ -236,24 +254,23 @@
                     else d = '중';
                     
                     if(!diffStats[d]) diffStats[d] = {total:0, correct:0};
-                    diffStats[d].total++; if(r.isCorrect) diffStats[d].correct++;
+                    diffStats[d].total++; if(r.earnedScore > 0) diffStats[d].correct++;
 
                     let t = String(r.type || '기타');
                     if (t.includes('객관')) t = '객관식'; else if (t.includes('주관') || t.includes('서술')) t = '주관식/서술형'; else t = '기타';
                     if(!typeStats[t]) typeStats[t] = { total: 0, correct: 0 };
-                    typeStats[t].total++; if(r.isCorrect) typeStats[t].correct++;
+                    typeStats[t].total++; if(r.earnedScore > 0) typeStats[t].correct++;
                 });
 
                 const totalScore = maxScore > 0 ? Math.round(totalScoreCalc * 10) / 10 : Math.round((results.filter(r => r.isCorrect).length / results.length) * 100);
                 const diffOrder = ['하', '중', '상', '최상'];
                 const unitData = Object.entries(unitStats).map(([name, stats]) => ({ name, ...stats }));
                 
-                // 난이도별 색상 적용 (공유 화면)
                 const diffData = Object.entries(diffStats).map(([name, stats]) => {
-                    let itemColor = '#10b981'; // 기본 초록
-                    if (name === '상') itemColor = '#f97316'; // 주황
-                    else if (name === '중') itemColor = '#10b981'; // 초록
-                    else if (name === '하') itemColor = '#fde047'; // 연노랑
+                    let itemColor = '#10b981'; 
+                    if (name === '상') itemColor = '#f97316'; 
+                    else if (name === '중') itemColor = '#10b981'; 
+                    else if (name === '하') itemColor = '#fde047'; 
                     return { name, ...stats, color: itemColor };
                 }).filter(d=>d.total>0).sort((a,b) => diffOrder.indexOf(b.name) - diffOrder.indexOf(a.name));
 
@@ -262,7 +279,7 @@
 
                 return {
                     period: payload.p, name: payload.n, score: totalScore, schoolName: payload.s || '',
-                    results: results.map(r => ({q: r.qNum, m: r.majorUnit, i: r.minorUnit, t: r.type, d: r.difficulty, c: r.isCorrect, s: r.score})),
+                    results: results,
                     units: unitData, diffs: diffData, types: typeStats, comments: comments
                 };
             } catch(e) { console.error("데이터 디코딩 실패:", e); return null; }
@@ -273,7 +290,7 @@
             if (!analysisData) return {};
             const { unitData, totalScore, results } = analysisData;
             
-            const maxScore = results.reduce((acc, r) => acc + (r.score || r.s || 0), 0);
+            const maxScore = results.reduce((acc, r) => acc + (r.fullScore || r.score || r.s || 0), 0);
             const percentage = maxScore > 0 ? (totalScore / maxScore) * 100 : (results.filter(r => r.isCorrect).length / results.length) * 100;
             
             const unitsWithPct = unitData.map(u => ({ name: u.name, pct: (u.correct / u.total) * 100 })).sort((a, b) => b.pct - a.pct);
@@ -460,8 +477,19 @@
             const minor = r.i !== undefined ? r.i : r.minorUnit;
             const type = r.t !== undefined ? r.t : r.type;
             const diff = r.d !== undefined ? r.d : r.difficulty;
-            const score = r.s !== undefined ? r.s : r.score;
-            const isCorrect = r.c !== undefined ? r.c : r.isCorrect;
+            
+            const fullScore = r.fullScore !== undefined ? r.fullScore : (r.s !== undefined ? r.s : r.score);
+            const status = r.status !== undefined ? r.status : (r.c !== undefined ? (r.c ? 'O' : 'X') : (r.isCorrect ? 'O' : 'X'));
+            const earnedScore = r.earnedScore !== undefined ? r.earnedScore : (r.c || r.isCorrect ? fullScore : 0);
+
+            let statusIcon;
+            if (status === 'O') {
+                statusIcon = <div className="w-9 h-9 rounded-full border-2 border-emerald-500 text-emerald-500 flex items-center justify-center font-black text-[15px] bg-emerald-50">O</div>;
+            } else if (status === '△') {
+                statusIcon = <div className="w-9 h-9 rounded-full border-2 border-orange-500 text-orange-500 flex items-center justify-center font-black text-[18px] bg-orange-50 pb-0.5">△</div>;
+            } else {
+                statusIcon = <div className="w-9 h-9 rounded-full border-2 border-rose-500 text-rose-500 flex items-center justify-center font-black text-[15px] bg-rose-50">X</div>;
+            }
 
             return (
                 <div className="flex items-start justify-between p-3.5 bg-white rounded-xl border border-slate-200 shadow-sm h-auto break-inside-avoid">
@@ -473,17 +501,14 @@
                             <span className="text-[14px] font-bold text-slate-800 mb-1.5 leading-snug break-words whitespace-normal">
                                 {major || '-'} <span className="text-slate-400 font-normal text-[12px] inline-block">| {minor || '-'}</span>
                             </span>
-                            <div className="flex flex-wrap gap-1.5 text-[10px]">
+                            <div className="flex flex-wrap gap-1.5 text-[10px] items-center">
                                 <span className="bg-slate-50 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200 font-bold whitespace-nowrap">{type || '-'}</span>
                                 <span className={`px-1.5 py-0.5 rounded font-bold border whitespace-nowrap ${diff==='상'?'text-rose-600 bg-rose-50 border-rose-100':(diff==='하'?'text-emerald-600 bg-emerald-50 border-emerald-100':'text-amber-600 bg-amber-50 border-amber-100')}`}>{diff || '-'}</span>
-                                {score > 0 && <span className="text-indigo-500 font-bold px-1.5 py-0.5 whitespace-nowrap">{score}점</span>}
+                                {fullScore > 0 && <span className="text-indigo-500 font-bold px-1.5 py-0.5 whitespace-nowrap">{status === '△' ? `${earnedScore}점 / ${fullScore}점` : `${fullScore}점`}</span>}
                             </div>
                         </div>
                         <div className="shrink-0 flex items-center justify-center ml-1 mt-0.5">
-                            {isCorrect ? 
-                                <div className="w-9 h-9 rounded-full border-2 border-emerald-500 text-emerald-500 flex items-center justify-center font-black text-[15px] bg-emerald-50">O</div> : 
-                                <div className="w-9 h-9 rounded-full border-2 border-rose-500 text-rose-500 flex items-center justify-center font-black text-[15px] bg-rose-50">X</div>
-                            }
+                            {statusIcon}
                         </div>
                     </div>
                 </div>
@@ -505,14 +530,6 @@
                                 {data.schoolName && (
                                     <span className="text-sm font-bold text-indigo-200 bg-indigo-800/50 px-3 py-0.5 rounded-full">{data.schoolName}</span>
                                 )}
-                            </div>
-                            
-                            <div className="bg-white/10 p-5 rounded-2xl backdrop-blur-sm relative z-10 flex flex-col items-center border border-white/20 shadow-lg">
-                                <span className="text-sm font-bold text-indigo-100 mb-1">{data.name} 학생 종합 점수</span>
-                                <div className="flex items-baseline gap-1">
-                                    <span className="text-6xl font-black tracking-tighter">{data.score}</span>
-                                    <span className="text-xl font-bold">점</span>
-                                </div>
                             </div>
                         </div>
 
@@ -684,6 +701,7 @@
                 }
             }, [optionsData.examTypes, filters.examType]);
 
+            // 🌟 점수 파싱 및 상태계산 (O, X, △)
             const analysisData = useMemo(() => {
                 if (!filters.semester || !filters.examType || !filters.studentName) return null;
                 const targetPeriod = `${filters.semester} ${filters.examType}`;
@@ -695,10 +713,36 @@
 
                 let totalScoreCalc = 0;
                 const results = targetExams.map(ex => {
-                    const studentAns = targetStudent.responses[ex.qNum];
-                    const isCorrect = String(studentAns).trim().toUpperCase() === 'O' || String(studentAns).trim() === '정답';
-                    if (isCorrect) totalScoreCalc += (ex.score || 0);
-                    return { ...ex, isCorrect, studentAns };
+                    const studentAns = targetStudent.responses[ex.qNum]; // 'O', 'X', 숫자 형태
+                    const fullScore = ex.score || 0;
+                    let earnedScore = 0;
+                    let status = 'X';
+
+                    if (studentAns === 'O' || studentAns === '정답') {
+                        earnedScore = fullScore;
+                        status = 'O';
+                    } else if (studentAns === 'X' || studentAns === '오답' || studentAns === undefined || studentAns === '') {
+                        earnedScore = 0;
+                        status = 'X';
+                    } else {
+                        const numAns = parseFloat(studentAns);
+                        if (!isNaN(numAns)) {
+                            earnedScore = numAns;
+                            if (earnedScore >= fullScore && fullScore > 0) {
+                                earnedScore = fullScore;
+                                status = 'O';
+                            } else if (earnedScore > 0) {
+                                status = '△';
+                            } else {
+                                status = 'X';
+                            }
+                        }
+                    }
+
+                    totalScoreCalc += earnedScore;
+                    const isCorrect = earnedScore > 0;
+
+                    return { ...ex, isCorrect, studentAns, earnedScore, status, fullScore };
                 });
 
                 const maxPossibleScore = targetExams.reduce((sum, ex) => sum + (ex.score || 0), 0);
@@ -722,7 +766,6 @@
                     diffStats[d].total++; if(r.isCorrect) diffStats[d].correct++;
                 });
                 
-                // 🌟 선생님 화면 난이도별 색상 적용 🌟
                 const diffData = Object.entries(diffStats).map(([name, stats]) => {
                     let itemColor = '#10b981'; // 기본 초록
                     if (name === '상') itemColor = '#f97316'; // 주황
@@ -835,9 +878,15 @@
                                         const qNumStr = getVal(['문제', '문항']).replace(/[^0-9]/g, '');
                                         if (qNumStr) {
                                             const qNum = parseInt(qNumStr);
-                                            const scoreStr = getVal(['점수']).replace(/[^0-9.]/g, ''); 
-                                            const score = parseFloat(scoreStr) || 0;
-                                            responses[qNum] = score > 0 ? 'O' : 'X';
+                                            // 🌟 3선생님, 1학생 등에서 숫자만 쏙 골라내는 필터
+                                            const rawScore = getVal(['점수', '취득점수']);
+                                            const numericMatch = rawScore.replace(/[^0-9.]/g, ''); 
+                                            
+                                            if (numericMatch !== '') {
+                                                responses[qNum] = parseFloat(numericMatch);
+                                            } else {
+                                                responses[qNum] = (rawScore.toUpperCase() === 'O' || rawScore === '정답') ? 'O' : 'X';
+                                            }
                                         }
                                     });
 
@@ -862,6 +911,7 @@
                                             if (qNumStr) {
                                                 const qNum = parseInt(qNumStr);
                                                 if (qNum > 0 && qNum <= 100) {
+                                                    // 가로형은 점수가 'O' 나 'X' 로 들어가거나 숫자로 들어감
                                                     responses[qNum] = String(row[k]).trim().toUpperCase();
                                                 }
                                             }
@@ -1113,7 +1163,7 @@
 
                     {analysisData && (
                         <div className="pt-8 no-print:bg-slate-100">
-                            {/* --- 🖨️ Page 1: 종합 성취도 (여기서 인쇄 여백과 크기가 조정됩니다!) --- */}
+                            {/* --- 🖨️ Page 1: 종합 성취도 --- */}
                             <div className="a4-page bg-white print-page-1">
                                 <div className="border-b-4 border-indigo-900 pb-6 mb-8 print:pb-4 print:mb-4 flex justify-between items-end">
                                     <div>
@@ -1142,7 +1192,7 @@
                                             <span className="text-2xl font-bold">점</span>
                                         </div>
                                         <div className="mt-3 text-xs font-bold opacity-80 z-10 bg-indigo-800/50 px-4 py-1.5 rounded-full">
-                                            {analysisData.results.filter(r=>r.isCorrect).length} / {analysisData.results.length} 문항 정답
+                                            {analysisData.results.filter(r=>r.earnedScore > 0).length} / {analysisData.results.length} 문항 부분/전체 정답
                                         </div>
                                     </div>
 
@@ -1204,7 +1254,7 @@
                                 </div>
                             </div>
 
-                            {/* --- 🖨️ Page 2: 상세 정오표 (내용이 길면 알아서 넘어갑니다) --- */}
+                            {/* --- 🖨️ Page 2: 상세 정오표 --- */}
                             <div className="a4-page bg-white flex flex-col print-page-auto">
                                 <div className="border-b-2 border-slate-200 pb-4 mb-6 flex items-center justify-between">
                                     <h2 className="text-2xl font-black text-slate-900 flex items-center gap-2 tracking-tight">
