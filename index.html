@@ -73,7 +73,7 @@
         const ReactDOM = window.ReactDOM;
         const { useState, useMemo, useRef, useEffect } = React;
 
-        // --- Firebase Config ---
+        // --- Firebase Config (실제 설정값 반영) ---
         const firebaseConfig = {
             apiKey: "AIzaSyC82hnDtesWHC2Xm3P36V1kKQfl-1RIhtM",
             authDomain: "math-evaluation-system.firebaseapp.com",
@@ -83,11 +83,11 @@
             appId: "1:795313813853:web:6a8e1224a0a4eb30b590b4"
         };
 
-        if (!firebase.apps.length) {
-            firebase.initializeApp(firebaseConfig);
+        if (!window.firebase.apps.length) {
+            window.firebase.initializeApp(firebaseConfig);
         }
-        const db = firebase.firestore();
-        const auth = firebase.auth();
+        const db = window.firebase.firestore();
+        const auth = window.firebase.auth();
         const appId = firebaseConfig.projectId;
 
         // --- 🌟 똑똑한 시험 기간 문자열 분석기 (괄호 및 기말고사 완벽 인식) ---
@@ -164,18 +164,16 @@
             };
 
             const r = analysisData.results.map(res => [
-                res.qNum, getDictIdx(res.majorUnit), getDictIdx(res.minorUnit),
-                getDictIdx(res.type), getDictIdx(res.difficulty), res.isCorrect ? 1 : 0, res.score || 0
+                res.qNum,
+                getDictIdx(res.majorUnit),
+                getDictIdx(res.minorUnit),
+                getDictIdx(res.type),
+                getDictIdx(res.difficulty),
+                res.isCorrect ? 1 : 0,
+                res.score || 0
             ]);
 
-            const payload = { 
-                p: analysisData.targetPeriod, 
-                n: studentName, 
-                d: dict, 
-                r: r,
-                s: analysisData.schoolName || '' 
-            };
-
+            const payload = { p: analysisData.targetPeriod, n: studentName, d: dict, r: r, s: analysisData.schoolName || '' };
             try {
                 const jsonStr = JSON.stringify(payload);
                 return window.LZString.compressToEncodedURIComponent(jsonStr);
@@ -199,7 +197,7 @@
                     payload = JSON.parse(jsonStr);
                 }
                 
-                if (payload.period) return payload; // 구버전 호환
+                if (payload.period) return payload;
 
                 const dict = payload.d;
                 const results = payload.r.map(item => ({
@@ -757,73 +755,84 @@
 
             const comments = useMemo(() => generateAIComment(analysisData), [analysisData]);
 
-            // 파일 업로드 - 즉시 화면 반영 및 온라인 동시 전송
+            // 파일 업로드 - 안정적인 상태 업데이트와 파이어베이스 연동 처리
             const handleFileUpload = async (e) => {
                 const files = Array.from(e.target.files);
                 if (files.length === 0) return;
 
-                let addedExams = 0;
-                let addedStudents = 0;
+                let addedExams = [];
+                let addedStudents = [];
 
-                const readFile = (file) => new Promise((resolve) => {
-                    const processWorkbook = (workbook) => {
-                        try {
-                            const json = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { defval: "" });
-                            if (json.length === 0) return resolve();
-
-                            const keys = Object.keys(json[0]).map(k => String(k).trim()).join(',');
-                            
-                            if (keys.includes('단원') || keys.includes('난이도') || keys.includes('출제시기')) {
-                                const parsedExams = json.map(row => {
-                                    const getVal = (keywords) => {
-                                        const key = Object.keys(row).find(k => keywords.some(kw => String(k).includes(kw)));
-                                        return key ? String(row[key]).trim() : '';
-                                    };
-                                    
-                                    const rawPeriod = getVal(['출제시기', '시기']); 
-                                    const rawGrade = getVal(['학년']); 
-                                    const parsedPeriod = parsePeriodString(rawPeriod, rawGrade, file.name);
-                                    
-                                    return {
-                                        period: parsedPeriod,
-                                        rawPeriod: rawPeriod, // 연도 추출을 위해 원본 유지
-                                        school: getVal(['학교명', '학교']),
-                                        qNum: parseInt(getVal(['문항번호', '번호', '문항'])) || 0,
-                                        type: getVal(['문항유형', '유형', '형태']),
-                                        difficulty: getVal(['난이도', '수준']),
-                                        majorUnit: getVal(['대단원']),
-                                        minorUnit: getVal(['소단원']),
-                                        score: parseFloat(getVal(['배점', '점수'])) || 0
-                                    };
-                                }).filter(e => e.qNum > 0);
+                for (const file of files) {
+                    await new Promise((resolve) => {
+                        const reader = new FileReader();
+                        reader.onload = (evt) => {
+                            try {
+                                const buffer = evt.target.result;
+                                let text = ""; 
+                                try { 
+                                    text = new TextDecoder('utf-8', {fatal:true}).decode(new Uint8Array(buffer)); 
+                                } catch(err) { 
+                                    text = new TextDecoder('euc-kr').decode(new Uint8Array(buffer)); 
+                                }
                                 
-                                // 화면에 즉시 업데이트
-                                setExams(prev => [...prev.filter(p => !parsedExams.some(n => n.period === p.period)), ...parsedExams]);
-                                addedExams += parsedExams.length;
+                                let wb;
+                                // 🌟 탭 분리형 CSV 파일 강제 인식 로직 복원 🌟
+                                if (file.name.toLowerCase().endsWith('.csv') || file.name.toLowerCase().endsWith('.tsv')) {
+                                    text = text.replace(/\r/g, ''); // 윈도우 환경 숨은 줄바꿈 문자 제거
+                                    if (text.includes('\t')) {
+                                        const rows = text.trim().split('\n').map(l => l.split('\t'));
+                                        wb = { Sheets: { Sheet1: window.XLSX.utils.aoa_to_sheet(rows) }, SheetNames: ['Sheet1'] };
+                                    } else {
+                                        const rows = text.trim().split('\n').map(l => l.split(','));
+                                        wb = { Sheets: { Sheet1: window.XLSX.utils.aoa_to_sheet(rows) }, SheetNames: ['Sheet1'] };
+                                    }
+                                } else {
+                                    wb = window.XLSX.read(new Uint8Array(buffer), { type: 'array' });
+                                }
 
-                                // 파이어베이스 백그라운드 전송
-                                parsedExams.forEach(ex => {
-                                    db.collection('artifacts').doc(appId).collection('public').doc('data').collection('exams').doc(`${ex.period}_${ex.qNum}`).set(ex).catch(e => console.warn(e));
-                                });
-                            } 
-                            else if (keys.includes('문제') && (keys.includes('정답') || keys.includes('점수'))) {
-                                // 세로형 학생 데이터 파싱 (강동원_중2-1.csv 같은 형태)
-                                setExams(prevExams => {
-                                    const fallbackPeriod = prevExams.length > 0 ? prevExams[0].period : '';
-                                    let studentName = "학생";
-                                    let finalPeriod = fallbackPeriod;
+                                const json = window.XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "" });
+                                if (json.length === 0) return resolve();
 
+                                const keys = Object.keys(json[0]).map(k => String(k).trim()).join(',');
+                                
+                                if (keys.includes('단원') || keys.includes('난이도') || keys.includes('출제시기')) {
+                                    const parsedExams = json.map(row => {
+                                        const getVal = (keywords) => {
+                                            const key = Object.keys(row).find(k => keywords.some(kw => String(k).includes(kw)));
+                                            return key ? String(row[key]).trim() : '';
+                                        };
+                                        
+                                        const rawPeriod = getVal(['출제시기', '시기']); 
+                                        const rawGrade = getVal(['학년']); 
+                                        const parsedPeriod = parsePeriodString(rawPeriod, rawGrade, file.name);
+                                        
+                                        return {
+                                            period: parsedPeriod,
+                                            rawPeriod: rawPeriod,
+                                            school: getVal(['학교명', '학교']),
+                                            qNum: parseInt(getVal(['문항번호', '번호', '문항'])) || 0,
+                                            type: getVal(['문항유형', '유형', '형태']),
+                                            difficulty: getVal(['난이도', '수준']),
+                                            majorUnit: getVal(['대단원']),
+                                            minorUnit: getVal(['소단원']),
+                                            score: parseFloat(getVal(['배점', '점수'])) || 0
+                                        };
+                                    }).filter(e => e.qNum > 0);
+                                    
+                                    addedExams.push(...parsedExams);
+                                } 
+                                else if (keys.includes('문제') && (keys.includes('정답') || keys.includes('점수'))) {
                                     const fileName = file.name.replace(/\.[^/.]+$/, "").trim();
+                                    let studentName = "학생";
+                                    let finalPeriod = "";
+
                                     if (fileName.includes('_')) {
                                         studentName = fileName.split('_')[0].trim();
                                         const restStr = fileName.substring(fileName.indexOf('_') + 1);
-                                        finalPeriod = parsePeriodString(restStr, '', file.name) || fallbackPeriod;
+                                        finalPeriod = parsePeriodString(restStr, '', file.name);
                                     } else {
                                         studentName = fileName;
-                                    }
-
-                                    if (!finalPeriod || finalPeriod === '-' || finalPeriod.split(' ').length < 2) {
-                                        finalPeriod = fallbackPeriod;
                                     }
 
                                     const responses = {};
@@ -840,21 +849,9 @@
                                         }
                                     });
 
-                                    const parsedStudents = [{ name: studentName, period: finalPeriod, responses }];
-                                    
-                                    setStudents(prev => [...prev.filter(p => !(p.name === studentName && p.period === finalPeriod)), ...parsedStudents]);
-                                    addedStudents += 1;
-
-                                    db.collection('artifacts').doc(appId).collection('public').doc('data').collection('students').doc(`${studentName}_${finalPeriod}`).set({ name: studentName, period: finalPeriod, responses }).catch(e => console.warn(e));
-
-                                    return prevExams;
-                                });
-                            }
-                            else if (keys.includes('이름') || keys.includes('학생') || keys.includes('성명') || (keys.includes('1') && keys.includes('2'))) {
-                                // 가로형 학생 데이터 파싱
-                                setExams(prevExams => {
-                                    const fallbackPeriod = prevExams.length > 0 ? prevExams[0].period : '';
-
+                                    addedStudents.push({ name: studentName, period: finalPeriod, responses, isVertical: true });
+                                }
+                                else if (keys.includes('이름') || keys.includes('학생') || keys.includes('성명') || (keys.includes('1') && keys.includes('2'))) {
                                     const parsedStudents = json.map(row => {
                                         const getVal = (keywords) => {
                                             const key = Object.keys(row).find(k => keywords.some(kw => String(k).includes(kw)));
@@ -875,9 +872,7 @@
                                                 finalPeriod = `${sem} ${parenMatch[2].trim()}`;
                                             } else {
                                                 let examStr = fullRowText.includes('중간') ? '중간' : (fullRowText.includes('기말') ? '기말' : '');
-                                                const fallbackSem = fallbackPeriod.split(' ')[0] || '';
-                                                if (examStr && fallbackSem) finalPeriod = `${fallbackSem} ${examStr}`;
-                                                else finalPeriod = fallbackPeriod;
+                                                finalPeriod = examStr ? `FALLBACK ${examStr}` : "";
                                             }
                                         }
                                         
@@ -895,76 +890,52 @@
                                         return { name, period: finalPeriod, responses };
                                     }).filter(Boolean);
                                     
-                                    if (parsedStudents.length > 0) {
-                                        setStudents(prev => [...prev.filter(p => !parsedStudents.some(n => n.name === p.name && n.period === p.period)), ...parsedStudents]);
-                                        addedStudents += parsedStudents.length;
-
-                                        parsedStudents.forEach(s => {
-                                            db.collection('artifacts').doc(appId).collection('public').doc('data').collection('students').doc(`${s.name}_${s.period}`).set(s).catch(e => console.warn(e));
-                                        });
-                                    }
-
-                                    return prevExams;
-                                });
-                            }
-                        } catch (err) {
-                            console.error(err);
-                        }
-                        resolve();
-                    };
-
-                    const reader = new FileReader();
-                    reader.onload = (evt) => {
-                        try {
-                            const buffer = evt.target.result;
-                            let text = ""; 
-                            try { 
-                                text = new TextDecoder('utf-8', {fatal:true}).decode(new Uint8Array(buffer)); 
-                            } catch(e) { 
-                                text = new TextDecoder('euc-kr').decode(new Uint8Array(buffer)); 
-                            }
-                            
-                            let wb;
-                            // 🌟 탭 분리형 CSV 파일 강제 인식 엔진 적용
-                            if (file.name.toLowerCase().endsWith('.csv') || file.name.toLowerCase().endsWith('.tsv')) {
-                                if (text.includes('\t')) {
-                                    const lines = text.trim().split(/\r?\n/).filter(l => l.trim() !== '');
-                                    if(lines.length > 0) {
-                                        const headers = lines[0].split('\t').map(h => h.trim());
-                                        const json = [];
-                                        for(let i=1; i<lines.length; i++){
-                                            const cols = lines[i].split('\t');
-                                            const rowObj = {};
-                                            headers.forEach((h, idx) => rowObj[h] = cols[idx] ? cols[idx].trim() : '');
-                                            json.push(rowObj);
-                                        }
-                                        wb = { Sheets: { Sheet1: XLSX.utils.json_to_sheet(json) }, SheetNames: ['Sheet1'] };
-                                    } else {
-                                        wb = XLSX.read(text, { type: 'string' });
-                                    }
-                                } else {
-                                    wb = XLSX.read(text, { type: 'string' });
+                                    addedStudents.push(...parsedStudents);
                                 }
-                            } else {
-                                wb = XLSX.read(new Uint8Array(buffer), { type: 'array' });
+                            } catch (err) {
+                                console.error(err);
                             }
-                            
-                            if (wb) processWorkbook(wb);
-                            else resolve();
-                        } catch (err) {
-                            console.error(err);
                             resolve();
+                        };
+                        reader.readAsArrayBuffer(file);
+                    });
+                }
+
+                // 상태 업데이트와 파이어베이스 전송을 분리하여 안정성 강화
+                const currentTotalExams = [...exams, ...addedExams];
+                const fallbackPeriod = currentTotalExams.length > 0 ? currentTotalExams[0].period : '';
+
+                addedStudents = addedStudents.map(s => {
+                    if (!s.period || s.period.startsWith('FALLBACK') || s.period === '-' || s.period.split(' ').length < 2) {
+                        if (s.period && s.period.startsWith('FALLBACK')) {
+                            const examSuffix = s.period.split(' ')[1];
+                            s.period = fallbackPeriod ? `${fallbackPeriod.split(' ')[0]} ${examSuffix}` : fallbackPeriod;
+                        } else {
+                            s.period = fallbackPeriod;
                         }
-                    };
-                    reader.readAsArrayBuffer(file);
+                    }
+                    return s;
                 });
 
-                await Promise.all(files.map(f => readFile(f)));
+                if (addedExams.length > 0) {
+                    setExams(prev => [...prev.filter(p => !addedExams.some(n => n.period === p.period)), ...addedExams]);
+                    addedExams.forEach(ex => {
+                        db.collection('artifacts').doc(appId).collection('public').doc('data').collection('exams').doc(`${ex.period}_${ex.qNum}`).set(ex).catch(e => console.warn(e));
+                    });
+                }
 
-                if (addedExams > 0 || addedStudents > 0) {
-                    showToast(`✅ 업로드 완료! (시험 ${addedExams}건, 학생 ${addedStudents}명)`, 'success');
+                if (addedStudents.length > 0) {
+                    setStudents(prev => [...prev.filter(p => !addedStudents.some(n => n.name === p.name && n.period === p.period)), ...addedStudents]);
+                    addedStudents.forEach(s => {
+                        const saveObj = { name: s.name, period: s.period, responses: s.responses };
+                        db.collection('artifacts').doc(appId).collection('public').doc('data').collection('students').doc(`${s.name}_${s.period}`).set(saveObj).catch(e => console.warn(e));
+                    });
+                }
+
+                if (addedExams.length > 0 || addedStudents.length > 0) {
+                    showToast(`✅ 업로드 완료! (시험 ${addedExams.length}건, 학생 ${addedStudents.length}명)`, 'success');
                 } else {
-                    showToast(`❌ 인식된 데이터가 없습니다. 파일 양식을 다시 확인해주세요.`, 'error');
+                    showToast(`❌ 인식된 데이터가 없습니다. 파일 양식을 확인해주세요.`, 'error');
                 }
                 
                 e.target.value = '';
