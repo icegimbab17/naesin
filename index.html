@@ -90,64 +90,54 @@
         const auth = window.firebase.auth();
         const appId = firebaseConfig.projectId;
 
-        // --- 🌟 똑똑한 시험 기간 문자열 분석기 (괄호 및 기말고사 완벽 인식) ---
-        const parsePeriodString = (rawStr, rawGradeStr = '', fileName = '') => {
+        // --- 🌟 똑똑한 시험 기간 문자열 분석기 (중/고 접두사 제거 및 괄호 완벽 인식) ---
+        const parsePeriodString = (rawStr, rawGradeStr = '') => {
             const parseLogic = (str, gradeStr) => {
                 if (!str) return '';
                 str = String(str).trim();
+                
+                // 파일명에서 학생이름(강동원_)이 넘어왔을 경우 잘라냄
+                if (str.includes('_')) str = str.substring(str.indexOf('_') + 1);
                 
                 // 패턴 1: 괄호 포함 (예: 공통수학1 성취도 평가(복소수~연립방정식))
                 const parenMatch = str.match(/(.*?)\((.*?)\)/);
                 if (parenMatch) {
                     let sem = parenMatch[1].replace(/성취도\s*평가/g, '').replace(/테스트/g, '').trim();
                     sem = sem.replace(/\s+/g, ''); 
+                    // '중2-1' 이나 '고1-1' 에서 앞의 '중/고' 글자만 날려서 엑셀 포맷과 통일!
+                    sem = sem.replace(/^[중고](?=\d-\d)/, ''); 
                     let exam = parenMatch[2].trim(); 
                     exam = exam.replace(/고사$/, ''); 
                     if (sem && exam) return `${sem} ${exam}`;
                 }
                 
-                // 패턴 2: 기존 중/고등 방식 (예: 3-1 기말)
-                let gMatch = (String(gradeStr) || str).match(/\d/);
-                let grade = gMatch ? gMatch[0] : '';
+                // 패턴 2: 기존 중/고등 방식 (예: 2024 1학기 기말)
+                // 연도가 있으면 학년 인식에 방해되므로 임시로 가림
+                let strForGrade = str.replace(/20\d{2}/g, '');
+                let gradeMatchStr = String(gradeStr) ? String(gradeStr) : strForGrade;
+                
+                let gMatch = gradeMatchStr.match(/(?:중|고)?\s*([1-6])/);
+                let grade = gMatch ? gMatch[1] : '';
+                
                 let tMatch = str.match(/(\d)\s*학기/);
                 let term = tMatch ? tMatch[1] : '';
                 
-                let semester = (grade && term) ? `${grade}-${term}` : str.replace(/중간|기말|고사/g, '').trim();
+                let semester = (grade && term) ? `${grade}-${term}` : str.replace(/중간|기말|고사|20\d{2}년?|출제시기/g, '').trim();
                 if (!semester && str.includes('-')) {
                     let sMatch = str.match(/(\d)[^\d]*(\d)/); 
                     if (sMatch) semester = `${sMatch[1]}-${sMatch[2]}`;
                 }
                 semester = semester.replace(/\s+/g, '');
+                semester = semester.replace(/^[중고](?=\d-\d)/, ''); // 여기서도 '중/고' 접두사 제거
+                
                 let exam = str.includes('중간') ? '중간' : (str.includes('기말') ? '기말' : '');
                 
                 if (semester && exam) return `${semester} ${exam}`;
                 if (semester) return semester;
-                return str;
+                return str.trim();
             };
 
-            // 1순위: 파일명에서 괄호 구조 파악
-            if (fileName) {
-                const baseName = fileName.replace(/\.[^/.]+$/, "").trim();
-                const parenMatch = baseName.match(/(.*?)\((.*?)\)/);
-                if (parenMatch) {
-                    const fileResult = parseLogic(baseName, '');
-                    if (fileResult && fileResult.includes(' ')) return fileResult;
-                }
-            }
-            
-            // 2순위: 엑셀 내부 데이터 파싱
-            let result = parseLogic(rawStr, rawGradeStr);
-            
-            // 3순위: 내부 데이터로 파싱 실패 시 파일명으로 재시도
-            if ((!result || result.length < 2 || !result.includes(' ')) && fileName) {
-                const baseName = fileName.replace(/\.[^/.]+$/, "").trim();
-                const fbResult = parseLogic(baseName, '');
-                if (fbResult && fbResult.includes(' ')) {
-                    result = fbResult;
-                }
-            }
-            
-            return result;
+            return parseLogic(rawStr, rawGradeStr);
         };
 
         // --- URL 초압축 / 해제 엔진 ---
@@ -164,40 +154,29 @@
             };
 
             const r = analysisData.results.map(res => [
-                res.qNum,
-                getDictIdx(res.majorUnit),
-                getDictIdx(res.minorUnit),
-                getDictIdx(res.type),
-                getDictIdx(res.difficulty),
-                res.isCorrect ? 1 : 0,
-                res.score || 0
+                res.qNum, getDictIdx(res.majorUnit), getDictIdx(res.minorUnit),
+                getDictIdx(res.type), getDictIdx(res.difficulty), res.isCorrect ? 1 : 0, res.score || 0
             ]);
 
             const payload = { p: analysisData.targetPeriod, n: studentName, d: dict, r: r, s: analysisData.schoolName || '' };
             try {
                 const jsonStr = JSON.stringify(payload);
                 return window.LZString.compressToEncodedURIComponent(jsonStr);
-            } catch(e) {
-                console.error("인코딩 에러", e);
-                return null;
-            }
+            } catch(e) { console.error("인코딩 에러", e); return null; }
         };
 
         const decodeReportData = (encodedStr) => {
             try {
                 let jsonStr = window.LZString.decompressFromEncodedURIComponent(encodedStr);
                 let payload;
-                
-                if (jsonStr) {
-                    payload = JSON.parse(jsonStr);
-                } else {
+                if (jsonStr) { payload = JSON.parse(jsonStr); } 
+                else {
                     const safeStr = encodedStr.replace(/ /g, '+');
                     try { jsonStr = decodeURIComponent(escape(window.atob(safeStr))); }
                     catch(e) { jsonStr = decodeURIComponent(window.atob(safeStr)); }
                     payload = JSON.parse(jsonStr);
                 }
-                
-                if (payload.period) return payload;
+                if (payload.period) return payload; // 구버전 호환
 
                 const dict = payload.d;
                 const results = payload.r.map(item => ({
@@ -205,15 +184,11 @@
                     type: dict[item[3]], difficulty: dict[item[4]], isCorrect: item[5] === 1, score: item[6]
                 }));
 
-                let totalScoreCalc = 0;
-                let maxScore = 0;
-                const unitStats = {};
-                const diffStats = { '상': {total:0, correct:0}, '중': {total:0, correct:0}, '하': {total:0, correct:0} };
-                const typeStats = {};
+                let totalScoreCalc = 0, maxScore = 0;
+                const unitStats = {}, diffStats = { '상': {total:0, correct:0}, '중': {total:0, correct:0}, '하': {total:0, correct:0} }, typeStats = {};
 
                 results.forEach(r => {
-                    totalScoreCalc += r.isCorrect ? r.score : 0;
-                    maxScore += r.score;
+                    totalScoreCalc += r.isCorrect ? r.score : 0; maxScore += r.score;
                     if(!unitStats[r.majorUnit]) unitStats[r.majorUnit] = { total: 0, correct: 0 };
                     unitStats[r.majorUnit].total++; if(r.isCorrect) unitStats[r.majorUnit].correct++;
 
@@ -244,10 +219,7 @@
                     results: results.map(r => ({q: r.qNum, m: r.majorUnit, i: r.minorUnit, t: r.type, d: r.difficulty, c: r.isCorrect, s: r.score})),
                     units: unitData, diffs: diffData, types: typeStats, comments: comments
                 };
-            } catch(e) {
-                console.error("데이터 디코딩 실패:", e);
-                return null;
-            }
+            } catch(e) { console.error("데이터 디코딩 실패:", e); return null; }
         };
 
         // --- 🌟 KICE 전문 학습 가이드 생성 로직 ---
@@ -258,21 +230,15 @@
             const maxScore = results.reduce((acc, r) => acc + (r.score || r.s || 0), 0);
             const percentage = maxScore > 0 ? (totalScore / maxScore) * 100 : (results.filter(r => r.isCorrect).length / results.length) * 100;
             
-            const unitsWithPct = unitData.map(u => ({
-                name: u.name,
-                pct: (u.correct / u.total) * 100
-            })).sort((a, b) => b.pct - a.pct);
+            const unitsWithPct = unitData.map(u => ({ name: u.name, pct: (u.correct / u.total) * 100 })).sort((a, b) => b.pct - a.pct);
 
-            let strongText = "-";
-            let weakText = "-";
-            let primaryWeakUnit = "-";
+            let strongText = "-", weakText = "-", primaryWeakUnit = "-";
 
             if (unitsWithPct.length > 0) {
                 const bestScore = unitsWithPct[0].pct;
                 const strongUnits = unitsWithPct.filter(u => u.pct === bestScore || u.pct >= 90).slice(0, 2);
                 strongText = strongUnits.map(u => u.name).join(', ');
 
-                // 70% 이하 보완 기준 엄격 적용
                 const weakCandidates = unitsWithPct.filter(u => u.pct <= 70).sort((a, b) => a.pct - b.pct);
                 if (weakCandidates.length > 0) {
                     weakText = weakCandidates.slice(0, 2).map(u => u.name).join(', ');
@@ -289,7 +255,6 @@
                 }
             }
 
-            // KICE 가이드라인 DB
             const kiceGuidelines = {
                 "유리수와 순환소수": "순환소수를 분수로 고치는 기계적 계산보다는 유리수와 순환소수의 관계를 깊이 있게 이해하는 데 중점을 두어야 합니다.",
                 "식의 계산": "지수법칙을 이해하고, 다항식의 사칙계산을 정확히 수행하는 능력이 필요합니다. 지나치게 복잡한 식보다는 기본 법칙의 정확한 적용을 연습하세요.",
@@ -316,14 +281,12 @@
                 "함수의 극한": "직관적인 그래프 해석을 통해 극한의 개념을 이해하고, 극한에 대한 기본 성질을 이용하여 함수의 극한값을 구하는 능력이 필요합니다."
             };
 
-            // 유사도 기반 매칭
             let matchedGuideline = "";
             const cleanWeakUnit = primaryWeakUnit.replace(/\s+/g, '');
             for (const key in kiceGuidelines) {
                 const cleanKey = key.replace(/\s+/g, '');
                 if (cleanWeakUnit.includes(cleanKey) || cleanKey.includes(cleanWeakUnit)) {
-                    matchedGuideline = kiceGuidelines[key];
-                    break;
+                    matchedGuideline = kiceGuidelines[key]; break;
                 }
             }
 
@@ -332,7 +295,6 @@
             }
 
             let method = "";
-
             if (percentage >= 100) {
                 method = `모든 단원의 개념을 완벽하게 이해하고 있습니다! 🎉 현재의 훌륭한 학습 패턴을 유지하며, 심화 문제나 선행 학습을 가볍게 시작해 보는 것을 적극 추천합니다.`;
                 weakText = "취약 단원 없음 (완벽함!)";
@@ -777,7 +739,7 @@
                                 }
                                 
                                 let wb;
-                                // 🌟 탭 분리형 CSV 파일 강제 인식 로직 복원 🌟
+                                // 🌟 탭 분리형 CSV 파일 강제 인식 로직 (개선)
                                 if (file.name.toLowerCase().endsWith('.csv') || file.name.toLowerCase().endsWith('.tsv')) {
                                     text = text.replace(/\r/g, ''); // 윈도우 환경 숨은 줄바꿈 문자 제거
                                     if (text.includes('\t')) {
@@ -849,7 +811,7 @@
                                         }
                                     });
 
-                                    addedStudents.push({ name: studentName, period: finalPeriod, responses, isVertical: true });
+                                    addedStudents.push({ name: studentName, period: finalPeriod, responses });
                                 }
                                 else if (keys.includes('이름') || keys.includes('학생') || keys.includes('성명') || (keys.includes('1') && keys.includes('2'))) {
                                     const parsedStudents = json.map(row => {
@@ -869,6 +831,7 @@
                                             const parenMatch = fullRowText.match(/([가-힣a-zA-Z0-9\s]+?)(?:성취도\s*평가)?\s*\((.+?)\)/);
                                             if (parenMatch) {
                                                 let sem = parenMatch[1].replace(/성취도\s*평가/g, '').replace(/테스트/g, '').replace(/\s+/g, '');
+                                                sem = sem.replace(/^[중고](?=\d-\d)/, '');
                                                 finalPeriod = `${sem} ${parenMatch[2].trim()}`;
                                             } else {
                                                 let examStr = fullRowText.includes('중간') ? '중간' : (fullRowText.includes('기말') ? '기말' : '');
