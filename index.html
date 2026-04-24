@@ -229,15 +229,20 @@
                 const diffStats = { '상': {total:0, correct:0}, '중': {total:0, correct:0}, '하': {total:0, correct:0} };
                 const typeStats = {};
 
+                // 🌟 순수 대단원 추출 함수 (어떤 기호가 오든 맨 앞만 추출) 🌟
+                const cleanMajorUnit = (str) => {
+                    if (!str) return '기타';
+                    return String(str).split(/[\(\[\-\:\>_]/)[0].trim();
+                };
+
                 results.forEach(r => {
                     totalScoreCalc += r.earnedScore !== undefined ? r.earnedScore : (r.isCorrect ? r.score : 0); 
                     maxScore += r.fullScore !== undefined ? r.fullScore : r.score;
                     
-                    let cleanMajor = r.majorUnit ? r.majorUnit.trim() : '기타';
-                    cleanMajor = cleanMajor.replace(/\s*[\(\[].*?[\)\]]/g, '').trim();
+                    let major = cleanMajorUnit(r.majorUnit);
 
-                    if(!unitStats[cleanMajor]) unitStats[cleanMajor] = { total: 0, correct: 0 };
-                    unitStats[cleanMajor].total++; if(r.earnedScore > 0) unitStats[cleanMajor].correct++;
+                    if(!unitStats[major]) unitStats[major] = { total: 0, correct: 0 };
+                    unitStats[major].total++; if(r.earnedScore > 0) unitStats[major].correct++;
 
                     let d = String(r.difficulty || '중');
                     if (d.includes('상') || d.includes('어려움') || d.includes('7') || d.includes('8')) d = '상';
@@ -463,7 +468,9 @@
 
         const DetailRowItem = ({ r }) => {
             const qNum = r.q !== undefined ? r.q : r.qNum;
-            const major = r.m !== undefined ? r.m : r.majorUnit;
+            const rawMajor = r.m !== undefined ? r.m : r.majorUnit;
+            const cleanMajor = rawMajor ? String(rawMajor).split(/[\(\[\-\:\>_]/)[0].trim() : '-';
+            
             const minor = r.i !== undefined ? r.i : r.minorUnit;
             const type = r.t !== undefined ? r.t : r.type;
             const diff = r.d !== undefined ? r.d : r.difficulty;
@@ -489,7 +496,7 @@
                         </div>
                         <div className="flex flex-col flex-1 min-w-0 pr-2">
                             <span className="text-[14px] font-bold text-slate-800 mb-1.5 leading-snug break-words whitespace-normal">
-                                {major || '-'} <span className="text-slate-400 font-normal text-[12px] inline-block">| {minor || '-'}</span>
+                                {cleanMajor} <span className="text-slate-400 font-normal text-[12px] inline-block">| {minor || '-'}</span>
                             </span>
                             <div className="flex flex-wrap gap-1.5 text-[10px] items-center">
                                 <span className="bg-slate-50 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200 font-bold whitespace-nowrap">{type || '-'}</span>
@@ -527,7 +534,7 @@
                                 <div className="flex flex-col items-center justify-center flex-shrink-0 pr-4 border-r border-slate-100 min-w-[90px]">
                                     <span className="text-[12px] font-bold text-slate-500 mb-1">{data.name} 학생</span>
                                     <div className="flex items-baseline gap-0.5 text-indigo-600">
-                                        <span className="text-3xl font-black tracking-tighter">{data.score}</span>
+                                        <span className="text-4xl font-black tracking-tighter">{data.score}</span>
                                         <span className="text-sm font-bold">점</span>
                                     </div>
                                 </div>
@@ -595,6 +602,7 @@
             );
         };
 
+        // --- 📊 기출 분석 전용 뷰 컴포넌트 ---
         const ExamAnalysisView = ({ data }) => {
             const [questionImages, setQuestionImages] = useState({});
 
@@ -609,6 +617,49 @@
                 }
             };
 
+            // 🌟 파일명 기반 지능형 제목 생성 로직 🌟
+            const formattedTitleElements = useMemo(() => {
+                const fileName = data.fileName || "";
+                let year = "";
+                let school = "";
+                let semester = "";
+                let exam = "";
+
+                if (fileName.includes("24")) year = "24년";
+                if (fileName.includes("25")) year = "25년";
+                if (fileName.includes("26")) year = "26년";
+                if (fileName.includes("27")) year = "27년";
+
+                const schoolMatch = fileName.match(/[가-힣]{2,4}(?:중|고)/);
+                if (schoolMatch) school = schoolMatch[0];
+                else if (fileName.includes("신곡")) school = "신곡중";
+
+                if (fileName.match(/1-1|1학년\s*1학기/)) semester = "1-1";
+                else if (fileName.match(/1-2|1학년\s*2학기/)) semester = "1-2";
+                else if (fileName.match(/2-1|2학년\s*1학기/)) semester = "2-1";
+                else if (fileName.match(/2-2|2학년\s*2학기/)) semester = "2-2";
+                else if (fileName.match(/3-1|3학년\s*1학기/)) semester = "3-1";
+                else if (fileName.match(/3-2|3학년\s*2학기/)) semester = "3-2";
+
+                if (fileName.includes("중간")) exam = "중간고사";
+                else if (fileName.includes("기말")) exam = "기말고사";
+
+                const parts = [year, school, semester, exam].filter(Boolean);
+                if (parts.length > 0) {
+                    return (
+                        <h1 className="text-[26px] font-black text-slate-900 leading-tight break-keep">
+                            <span className="text-orange-600 mr-2">{parts.join(' ')}</span>분석
+                        </h1>
+                    );
+                }
+
+                return (
+                    <h1 className="text-[26px] font-black text-slate-900 leading-tight break-keep">
+                        <span className="text-orange-600 mr-2">{fileName}</span>분석
+                    </h1>
+                );
+            }, [data.fileName]);
+
             if (!data) return <div className="p-8 text-center h-screen flex items-center justify-center font-bold text-slate-500">기출 데이터를 불러올 수 없습니다. 시험을 먼저 선택해주세요.</div>;
 
             return (
@@ -617,9 +668,8 @@
                         <div className="border-b-4 border-orange-500 pb-4 mb-6 flex justify-between items-end">
                             <div>
                                 <div className="text-orange-500 font-black text-xs tracking-widest mb-1 uppercase tracking-tighter">Exam Analysis Report</div>
-                                <h1 className="text-[26px] font-black text-slate-900 leading-tight break-keep">
-                                    <span className="text-orange-600 mr-2">{data.fileName}</span>수학기출 분석
-                                </h1>
+                                {/* 🌟 지능형 제목 출력 적용 🌟 */}
+                                {formattedTitleElements}
                             </div>
                             <div className="text-right">
                                 <p className="text-sm text-slate-500 font-bold mb-1 uppercase tracking-tighter">Total Questions</p>
@@ -633,6 +683,7 @@
                                 <div>
                                     <h3 className="text-sm font-bold text-slate-500 mb-2 flex items-center gap-1"><Icon name="book-open" size={16}/> 시험 범위</h3>
                                     <div className="flex flex-wrap gap-2">
+                                        {/* 🌟 시험범위도 무조건 순수 대단원만 나오게 됨 */}
                                         {data.scopes.map((scope, idx) => (
                                             <span key={idx} className="bg-white border border-slate-200 text-slate-700 px-3 py-1.5 rounded-lg text-[13px] font-bold shadow-sm">{scope}</span>
                                         ))}
@@ -641,6 +692,7 @@
                                 <div className="grid grid-cols-2 gap-8 print:gap-4">
                                     <div>
                                         <h3 className="text-sm font-bold text-slate-500 mb-3 flex items-center gap-1"><Icon name="pie-chart" size={16}/> 단원별 문항 분포</h3>
+                                        {/* 🌟 문항 분포도 완벽한 순수 대단원으로만 계산됨 */}
                                         <HorizontalBarChart data={data.unitDistribution.map(u => ({...u, correct: u.count}))} color="#f97316" isExamView={true} />
                                     </div>
                                     <div>
@@ -683,7 +735,7 @@
                                             <div className="p-4 flex flex-col flex-1">
                                                 <h3 className="text-[16px] font-black text-slate-800 mb-3 flex items-center gap-2">
                                                     <div className="w-6 h-6 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center text-sm shrink-0">{q.qNum}</div>
-                                                    <span className="truncate">{q.majorUnit}</span> <span className="text-xs text-slate-400 font-medium shrink-0">| {q.minorUnit}</span>
+                                                    <span className="truncate">{q.cleanMajor}</span> <span className="text-xs text-slate-400 font-medium shrink-0">| {q.minorUnit}</span>
                                                 </h3>
                                                 <div className="space-y-3 flex-1 flex flex-col justify-end">
                                                     <div>
@@ -761,6 +813,7 @@
             const [linkModal, setLinkModal] = useState({ show: false, url: '' });
             const [pdfModal, setPdfModal] = useState({ show: false, url: '', isImage: false }); 
             
+            // 🌟 AI 이미지 자동 분석 관련 상태
             const [masterDB, setMasterDB] = useState(() => JSON.parse(localStorage.getItem('math_master_codes_cache') || '{}'));
             const [showAIModal, setShowAIModal] = useState(false);
             const [aiPeriodInput, setAiPeriodInput] = useState('');
@@ -857,6 +910,13 @@
                 }
             }, [optionsData.examTypes, filters.examType]);
 
+            // 🌟 온더플라이 대단원 순수 추출 엔진 🌟
+            const cleanMajorUnit = (str) => {
+                if (!str) return '미분류';
+                // 괄호, 대괄호, 하이픈, 콜론, 꺾쇠, 언더바 등 어떤 특수문자가 오든 그 앞까지만 무자비하게 잘라냅니다.
+                return String(str).split(/[\(\[\-\:\>_]/)[0].trim();
+            };
+
             const analysisData = useMemo(() => {
                 if (viewMode !== 'student' || !filters.semester || !filters.examType || !filters.studentName) return null;
                 const targetPeriod = `${filters.semester} ${filters.examType}`;
@@ -905,9 +965,7 @@
 
                 const unitStats = {};
                 results.forEach(r => {
-                    let major = r.majorUnit ? r.majorUnit.trim() : '기타';
-                    major = major.replace(/\s*[\(\[].*?[\)\]]/g, '').trim();
-
+                    const major = cleanMajorUnit(r.majorUnit);
                     if(!unitStats[major]) unitStats[major] = { total: 0, correct: 0 };
                     unitStats[major].total++; if(r.earnedScore > 0) unitStats[major].correct++;
                 });
@@ -964,27 +1022,13 @@
                     if (yearMatch && !schoolName.includes('년')) schoolName = `${yearMatch[0]}년 ${schoolName}`;
                 }
                 
-                const unitMap = new Map();
-                targetExams.forEach(e => {
-                    let major = e.majorUnit ? e.majorUnit.trim() : '';
-                    major = major.replace(/\s*[\(\[].*?[\)\]]/g, '').trim();
-                    if (major) {
-                        if (!unitMap.has(major)) unitMap.set(major, new Set());
-                        if (e.minorUnit && e.minorUnit.trim() !== '') {
-                            unitMap.get(major).add(e.minorUnit.trim());
-                        }
-                    }
-                });
-                const scopes = Array.from(unitMap.entries()).map(([major, minorSet]) => {
-                    const minors = Array.from(minorSet);
-                    if (minors.length > 0) return `${major} (${minors.join(', ')})`;
-                    return major;
-                });
+                // 🌟 순수 대단원 기준으로 시험범위(scopes) 생성 🌟
+                const scopes = [...new Set(targetExams.map(e => cleanMajorUnit(e.majorUnit)))].filter(Boolean);
                 
+                // 🌟 순수 대단원 기준으로 단원별 분포(unitCounts) 생성 🌟
                 const unitCounts = {};
                 targetExams.forEach(e => { 
-                    let major = e.majorUnit ? e.majorUnit.trim() : '기타';
-                    major = major.replace(/\s*[\(\[].*?[\)\]]/g, '').trim();
+                    const major = cleanMajorUnit(e.majorUnit);
                     unitCounts[major] = (unitCounts[major] || 0) + 1; 
                 });
                 const unitDistribution = Object.entries(unitCounts).map(([name, count]) => ({
@@ -1020,8 +1064,9 @@
                     };
                     
                     const aiShortStrategy = getMathStrategy((e.concept || e.minorUnit) + " " + e.majorUnit);
+                    const cleanMajor = cleanMajorUnit(e.majorUnit); // 🌟 여기서도 정돈
 
-                    return { ...e, numericDifficulty: level, aiShortStrategy };
+                    return { ...e, numericDifficulty: level, aiShortStrategy, cleanMajor };
                 });
 
                 const diffLevelsList = [
@@ -1035,11 +1080,7 @@
                 if (unitDistribution.length > 0) {
                     let maxDiffAvg = 0;
                     Object.entries(unitCounts).forEach(([u, count]) => {
-                        const sumDiff = processedExams.filter(e => {
-                            let mu = e.majorUnit ? e.majorUnit.trim() : '기타';
-                            mu = mu.replace(/\s*[\(\[].*?[\)\]]/g, '').trim();
-                            return mu === u;
-                        }).reduce((s,e)=>s+e.numericDifficulty,0);
+                        const sumDiff = processedExams.filter(e => e.cleanMajor === u).reduce((s,e)=>s+e.numericDifficulty,0);
                         const avg = sumDiff / count;
                         if (avg > maxDiffAvg) { maxDiffAvg = avg; hardestUnit = u; }
                     });
@@ -1051,7 +1092,7 @@
                 const coreQuestions = [...processedExams].sort((a,b) => b.numericDifficulty - a.numericDifficulty).slice(0, 2).map(q => {
                     let p = "복합 개념 적용 및 계산의 복잡성";
                     let s = "[1단계] 문제 조건의 정확한 수식화\n[2단계] 숨겨진 조건 파악 및 대입\n[3단계] 오답 함정 피하기 및 검산";
-                    const checkStr = q.majorUnit + " " + (q.concept || q.minorUnit);
+                    const checkStr = q.cleanMajor + " " + (q.concept || q.minorUnit);
                     if(checkStr.includes('도형')||checkStr.includes('삼각')) {
                         p = "보이지 않는 보조선을 그어 기하학적 성질 유추";
                         s = "[1단계] 도형의 특징 파악 및 보조선 작도\n[2단계] 닮음비/합동 조건 활용\n[3단계] 미지수 계산 및 결론 도출";
@@ -1313,17 +1354,28 @@
                                         const parsedPeriod = parsePeriodString(rawPeriod, rawGrade, file.name);
                                         
                                         const concept = getVal(['출제내용', '세부유형', '유형내용', '문항내용', '핵심개념']);
-                                        const majorUnit = getVal(['대단원', '단원명', '단원', '영역'], ['소단원', '중단원', '세부']);
-                                        const minorUnit = getVal(['소단원', '중단원']);
+                                        
+                                        let rawMajor = getVal(['대단원']);
+                                        if(!rawMajor) rawMajor = getVal(['단원명', '단원', '영역'], ['소단원', '중단원', '세부']);
+                                        let majorUnit = rawMajor ? String(rawMajor).split(/[\(\[\-\:\>_]/)[0].trim() : '수학 종합';
+                                        
+                                        let minorUnit = getVal(['중단원']);
+                                        if(!minorUnit) minorUnit = getVal(['소단원', '세부']);
+
+                                        let schoolStr = getVal(['학교명', '학교']);
+                                        if (!schoolStr) {
+                                            const match = file.name.match(/[가-힣a-zA-Z0-9]+(?:중|고|여중|남중|여고|남고|중학교|고등학교)/);
+                                            if (match) schoolStr = match[0];
+                                        }
                                         
                                         return {
                                             period: parsedPeriod,
                                             rawPeriod: rawPeriod,
-                                            school: getVal(['학교명', '학교']),
+                                            school: schoolStr,
                                             qNum: parseInt(getVal(['문항번호', '번호', '문항', '순번', 'no', 'No'])) || 0,
                                             type: getVal(['문항유형', '유형', '형태']),
                                             difficulty: getVal(['난이도', '수준']),
-                                            majorUnit: majorUnit || '수학 종합',
+                                            majorUnit: majorUnit,
                                             minorUnit: minorUnit,
                                             concept: concept,
                                             score: parseFloat(getVal(['배점', '점수'])) || 0,
