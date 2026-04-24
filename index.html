@@ -229,7 +229,6 @@
                 const diffStats = { '상': {total:0, correct:0}, '중': {total:0, correct:0}, '하': {total:0, correct:0} };
                 const typeStats = {};
 
-                // 🌟 순수 대단원 추출 함수 (어떤 기호가 오든 맨 앞만 추출) 🌟
                 const cleanMajorUnit = (str) => {
                     if (!str) return '기타';
                     return String(str).split(/[\(\[\-\:\>_]/)[0].trim();
@@ -468,6 +467,7 @@
 
         const DetailRowItem = ({ r }) => {
             const qNum = r.q !== undefined ? r.q : r.qNum;
+            // 🌟 학생 리포트에서도 대단원 무조건 추출 🌟
             const rawMajor = r.m !== undefined ? r.m : r.majorUnit;
             const cleanMajor = rawMajor ? String(rawMajor).split(/[\(\[\-\:\>_]/)[0].trim() : '-';
             
@@ -602,7 +602,6 @@
             );
         };
 
-        // --- 📊 기출 분석 전용 뷰 컴포넌트 ---
         const ExamAnalysisView = ({ data }) => {
             const [questionImages, setQuestionImages] = useState({});
 
@@ -617,7 +616,6 @@
                 }
             };
 
-            // 🌟 파일명 기반 지능형 제목 생성 로직 🌟
             const formattedTitleElements = useMemo(() => {
                 const fileName = data.fileName || "";
                 let year = "";
@@ -668,7 +666,6 @@
                         <div className="border-b-4 border-orange-500 pb-4 mb-6 flex justify-between items-end">
                             <div>
                                 <div className="text-orange-500 font-black text-xs tracking-widest mb-1 uppercase tracking-tighter">Exam Analysis Report</div>
-                                {/* 🌟 지능형 제목 출력 적용 🌟 */}
                                 {formattedTitleElements}
                             </div>
                             <div className="text-right">
@@ -683,7 +680,7 @@
                                 <div>
                                     <h3 className="text-sm font-bold text-slate-500 mb-2 flex items-center gap-1"><Icon name="book-open" size={16}/> 시험 범위</h3>
                                     <div className="flex flex-wrap gap-2">
-                                        {/* 🌟 시험범위도 무조건 순수 대단원만 나오게 됨 */}
+                                        {/* 🌟 순수 대단원만 화면에 노출됨 🌟 */}
                                         {data.scopes.map((scope, idx) => (
                                             <span key={idx} className="bg-white border border-slate-200 text-slate-700 px-3 py-1.5 rounded-lg text-[13px] font-bold shadow-sm">{scope}</span>
                                         ))}
@@ -692,7 +689,7 @@
                                 <div className="grid grid-cols-2 gap-8 print:gap-4">
                                     <div>
                                         <h3 className="text-sm font-bold text-slate-500 mb-3 flex items-center gap-1"><Icon name="pie-chart" size={16}/> 단원별 문항 분포</h3>
-                                        {/* 🌟 문항 분포도 완벽한 순수 대단원으로만 계산됨 */}
+                                        {/* 🌟 완벽한 대단원 차트 🌟 */}
                                         <HorizontalBarChart data={data.unitDistribution.map(u => ({...u, correct: u.count}))} color="#f97316" isExamView={true} />
                                     </div>
                                     <div>
@@ -813,14 +810,8 @@
             const [linkModal, setLinkModal] = useState({ show: false, url: '' });
             const [pdfModal, setPdfModal] = useState({ show: false, url: '', isImage: false }); 
             
-            // 🌟 AI 이미지 자동 분석 관련 상태
             const [masterDB, setMasterDB] = useState(() => JSON.parse(localStorage.getItem('math_master_codes_cache') || '{}'));
-            const [showAIModal, setShowAIModal] = useState(false);
-            const [aiPeriodInput, setAiPeriodInput] = useState('');
-            const [aiSchoolInput, setAiSchoolInput] = useState('');
-            const [selectedImages, setSelectedImages] = useState([]);
-            const [aiLoading, setAiLoading] = useState(false);
-
+            
             const [isStudentView, setIsStudentView] = useState(false);
             const [studentReportData, setStudentReportData] = useState(null);
             const [isGenerating, setIsGenerating] = useState(false);
@@ -913,7 +904,6 @@
             // 🌟 온더플라이 대단원 순수 추출 엔진 🌟
             const cleanMajorUnit = (str) => {
                 if (!str) return '미분류';
-                // 괄호, 대괄호, 하이픈, 콜론, 꺾쇠, 언더바 등 어떤 특수문자가 오든 그 앞까지만 무자비하게 잘라냅니다.
                 return String(str).split(/[\(\[\-\:\>_]/)[0].trim();
             };
 
@@ -1064,7 +1054,7 @@
                     };
                     
                     const aiShortStrategy = getMathStrategy((e.concept || e.minorUnit) + " " + e.majorUnit);
-                    const cleanMajor = cleanMajorUnit(e.majorUnit); // 🌟 여기서도 정돈
+                    const cleanMajor = cleanMajorUnit(e.majorUnit);
 
                     return { ...e, numericDifficulty: level, aiShortStrategy, cleanMajor };
                 });
@@ -1111,424 +1101,399 @@
 
             const comments = useMemo(() => generateAIComment(analysisData), [analysisData]);
 
-            const handleMasterDBUpload = (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-                
-                const reader = new FileReader();
-                reader.onload = (evt) => {
-                    const buffer = evt.target.result;
-                    let text = ""; 
-                    try { text = new TextDecoder('utf-8', {fatal:true}).decode(new Uint8Array(buffer)); } 
-                    catch(err) { text = new TextDecoder('euc-kr').decode(new Uint8Array(buffer)); }
-                    
-                    const lines = text.replace(/\r/g, '').split('\n');
-                    if(lines.length < 2) return showToast("데이터가 없습니다.", "error");
-                    
-                    const codeMap = {};
-                    for(let i = 1; i < lines.length; i++) {
-                        const row = lines[i];
-                        if(!row.trim()) continue;
-                        
-                        const cols = row.includes('\t') ? row.split('\t') : row.split(',');
-                        if (cols.length > 10) {
-                            const code = cols[0].trim();
-                            codeMap[code] = {
-                                major: cols[4] ? cols[4].trim() : '',
-                                minor: cols[6] ? cols[6].trim() : '',
-                                concept: cols[10] ? cols[10].trim() : ''
-                            };
-                        }
-                    }
-                    
-                    try {
-                        localStorage.setItem('math_master_codes_cache', JSON.stringify(codeMap));
-                        setMasterDB(codeMap);
-                        showToast(`✅ 마스터 DB ${Object.keys(codeMap).length}개 문항분류코드 로드 완료!`, 'success');
-                    } catch(e) {
-                        console.error("Storage limit", e);
-                        showToast("분류코드 데이터가 너무 큽니다. 캐시를 지우거나 파일을 줄여주세요.", "error");
-                    }
-                };
-                reader.readAsArrayBuffer(file);
-                e.target.value = '';
-            };
-
-            const handleAIImageSelection = (e) => {
-                const files = Array.from(e.target.files);
-                Promise.all(files.map(file => new Promise(resolve => {
-                    const reader = new FileReader();
-                    reader.onload = (evt) => resolve({ name: file.name, base64: evt.target.result });
-                    reader.readAsDataURL(file);
-                }))).then(images => {
-                    setSelectedImages(prev => [...prev, ...images]);
-                });
-                e.target.value = '';
-            };
-
-            const processAIAnalysis = async () => {
-                if(!aiPeriodInput) return showToast("시험 시기를 입력해주세요.", "error");
-                if(selectedImages.length === 0) return showToast("문항 이미지를 첨부해주세요.", "error");
-
-                setAiLoading(true);
-                try {
-                    const apiKey = "";
-                    const promptText = "다음 이미지들에서 각 수학 문제의 '문제 번호(숫자)', '문항분류코드(MS로 시작하는 14자리 문자열, 예: MS13-10-04-02-17)', '배점(숫자, 없으면 5)', '난이도(숫자 1~10, 없으면 4)'를 추출하세요. 절대 다른 텍스트나 마크다운 블록을 포함하지 말고 순수 JSON 배열만 반환하세요. 형식: [{\"qNum\": 1, \"code\": \"MS13-10-04-02-17\", \"score\": 5, \"difficulty\": 4}]";
-                    
-                    const parts = [ { text: promptText } ];
-
-                    for(const img of selectedImages) {
-                        parts.push({
-                            "inlineData": {
-                                "mimeType": "image/jpeg",
-                                "data": img.base64.split(',')[1]
-                            }
-                        });
-                    }
-
-                    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
-                    const payload = {
-                        contents: [{ parts }],
-                        generationConfig: { 
-                            responseMimeType: "application/json",
-                            responseSchema: {
-                                type: "ARRAY",
-                                items: {
-                                    type: "OBJECT",
-                                    properties: {
-                                        qNum: { type: "INTEGER", description: "문제 번호" },
-                                        code: { type: "STRING", description: "MS로 시작하는 문항분류코드" },
-                                        score: { type: "NUMBER", description: "배점 (없으면 5)" },
-                                        difficulty: { type: "INTEGER", description: "난이도 숫자 1~10 (없으면 4)" }
-                                    }
-                                }
-                            }
-                        }
-                    };
-
-                    let retries = 5;
-                    let delay = 1000;
-                    let data = null;
-                    while(retries > 0) {
-                        try {
-                            const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-                            if (!response.ok) throw new Error("API Fail");
-                            data = await response.json();
-                            break;
-                        } catch(e) {
-                            retries--;
-                            if(retries === 0) throw e;
-                            await new Promise(r => setTimeout(r, delay));
-                            delay *= 2;
-                        }
-                    }
-
-                    if(!data || !data.candidates || !data.candidates[0].content) throw new Error("결과 없음");
-
-                    const text = data.candidates[0].content.parts[0].text;
-                    const jsonResult = JSON.parse(text);
-
-                    const addedExams = jsonResult.map(res => {
-                        const mapped = masterDB[res.code] || { major: '미분류 단원', minor: '분류코드 확인 필요', concept: res.code || '분석불가' };
-                        return {
-                            period: aiPeriodInput,
-                            rawPeriod: aiPeriodInput,
-                            school: aiSchoolInput || "학교명 미상",
-                            qNum: res.qNum || 0,
-                            type: "객관식",
-                            difficulty: res.difficulty || 4,
-                            majorUnit: mapped.major,
-                            minorUnit: mapped.minor,
-                            concept: mapped.concept,
-                            score: res.score || 5,
-                            fileName: "AI 이미지 분석"
-                        };
-                    }).filter(e => e.qNum > 0);
-
-                    if(addedExams.length > 0) {
-                        setExams(prev => {
-                            const filtered = prev.filter(p => !(p.period === aiPeriodInput && addedExams.some(n => n.qNum === p.qNum)));
-                            return [...filtered, ...addedExams];
-                        });
-                        
-                        addedExams.forEach(ex => {
-                            db.collection('artifacts').doc(appId).collection('public').doc('data').collection('exams').doc(`${ex.period}_${ex.qNum}`).set(ex).catch(e => console.warn(e));
-                        });
-                        
-                        showToast(`✅ AI 분석 완료! ${addedExams.length}개 문항 데이터 생성 성공`, 'success');
-                        setShowAIModal(false);
-                        
-                        setViewMode('exam');
-                        setFilters(prev => ({ 
-                            ...prev, 
-                            semester: aiPeriodInput.split(' ')[0] || aiPeriodInput, 
-                            examType: aiPeriodInput.split(' ').slice(1).join(' ') || '' 
-                        }));
-
-                    } else {
-                        showToast("이미지에서 문항 정보를 찾지 못했습니다.", "error");
-                    }
-                } catch(e) {
-                    console.error(e);
-                    showToast("AI 분석 중 오류가 발생했습니다. 다시 시도해주세요.", "error");
-                } finally {
-                    setAiLoading(false);
-                }
-            };
-
+            // 🌟 모든 파일 원클릭 업로드 핸들러 (마스터DB + 학생 + 기출엑셀 + 기출이미지 몽땅 지원) 🌟
             const handleFileUpload = async (e) => {
                 const files = Array.from(e.target.files);
                 if (files.length === 0) return;
 
+                setIsGenerating(true);
+                showToast("데이터를 처리 중입니다...", "info");
+
                 let addedExams = [];
                 let addedStudents = [];
                 let addedMediaCount = 0;
+                let isMasterDBUpdated = false;
+                let currentMasterDB = { ...masterDB };
 
-                for (const file of files) {
-                    await new Promise((resolve) => {
-                        if (file.name.toLowerCase().endsWith('.pdf') || file.type.startsWith('image/')) {
+                const imageFiles = files.filter(f => f.type.startsWith('image/'));
+                const otherFiles = files.filter(f => !f.type.startsWith('image/'));
+
+                try {
+                    // 1. 일반 엑셀/CSV 및 PDF 처리
+                    for (const file of otherFiles) {
+                        if (file.name.toLowerCase().endsWith('.pdf')) {
                             const fileUrl = URL.createObjectURL(file);
-                            setExamMedia({ url: fileUrl, isImage: file.type.startsWith('image/') });
+                            setExamMedia({ url: fileUrl, isImage: false });
                             addedMediaCount++;
-                            resolve();
-                            return;
+                            continue;
                         }
 
-                        const reader = new FileReader();
-                        reader.onload = (evt) => {
-                            try {
-                                const buffer = evt.target.result;
-                                let text = ""; 
-                                try { text = new TextDecoder('utf-8', {fatal:true}).decode(new Uint8Array(buffer)); } 
-                                catch(err) { text = new TextDecoder('euc-kr').decode(new Uint8Array(buffer)); }
-                                
-                                let aoa = [];
-                                if (file.name.toLowerCase().endsWith('.csv') || file.name.toLowerCase().endsWith('.tsv')) {
-                                    text = text.replace(/\r/g, ''); 
-                                    const sep = text.includes('\t') ? '\t' : ',';
-                                    aoa = text.trim().split('\n').map(l => l.split(sep));
-                                } else {
-                                    const tempWb = window.XLSX.read(new Uint8Array(buffer), { type: 'array' });
-                                    aoa = window.XLSX.utils.sheet_to_json(tempWb.Sheets[tempWb.SheetNames[0]], { header: 1, defval: "" });
-                                }
-
-                                let headerIdx = -1;
-                                let fileType = 'UNKNOWN';
-                                for (let i = 0; i < Math.min(aoa.length, 15); i++) {
-                                    if (!aoa[i]) continue;
-                                    const rowStr = aoa[i].join(',').replace(/\s+/g, ''); 
-                                    if (rowStr.includes('대단원') || rowStr.includes('단원') || rowStr.includes('난이도') || rowStr.includes('배점') || rowStr.includes('출제내용') || rowStr.includes('출제시기')) { 
-                                        headerIdx = i; fileType = 'EXAM'; break; 
-                                    }
-                                    if (rowStr.includes('쓴답') || (rowStr.includes('문제') && (rowStr.includes('정답') || rowStr.includes('취득점수')))) { 
-                                        headerIdx = i; fileType = 'V_STUDENT'; break; 
-                                    }
-                                    if (rowStr.includes('이름') || rowStr.includes('성명') || rowStr.includes('학생')) { 
-                                        headerIdx = i; fileType = 'H_STUDENT'; break; 
-                                    }
-                                }
-
-                                if (headerIdx === -1) return resolve();
-
-                                const headers = aoa[headerIdx].map(h => String(h).trim().replace(/\s+/g, ''));
-                                const cleanJson = aoa.slice(headerIdx + 1).filter(r => r.some(c => String(c).trim() !== '')).map(row => {
-                                    const obj = {};
-                                    headers.forEach((h, idx) => { obj[h] = row[idx]; });
-                                    return obj;
-                                });
-
-                                if (fileType === 'EXAM') {
-                                    const parsedExams = cleanJson.map(row => {
-                                        const getVal = (keywords, excludes = []) => {
-                                            const key = Object.keys(row).find(k => {
-                                                const cleanK = String(k).replace(/\s+/g, '');
-                                                const isMatch = keywords.some(kw => cleanK.includes(kw.replace(/\s+/g, '')));
-                                                const isExcluded = excludes.some(ex => cleanK.includes(ex.replace(/\s+/g, '')));
-                                                return isMatch && !isExcluded;
-                                            });
-                                            return key ? String(row[key]).trim() : '';
-                                        };
+                        if (file.name.toLowerCase().endsWith('.csv') || file.name.toLowerCase().endsWith('.tsv') || file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.xls')) {
+                            await new Promise((resolve) => {
+                                const reader = new FileReader();
+                                reader.onload = (evt) => {
+                                    try {
+                                        const buffer = evt.target.result;
+                                        let text = ""; 
+                                        try { text = new TextDecoder('utf-8', {fatal:true}).decode(new Uint8Array(buffer)); } 
+                                        catch(err) { text = new TextDecoder('euc-kr').decode(new Uint8Array(buffer)); }
                                         
-                                        const rawPeriod = getVal(['출제시기', '시기']); 
-                                        const rawGrade = getVal(['학년']); 
-                                        const parsedPeriod = parsePeriodString(rawPeriod, rawGrade, file.name);
-                                        
-                                        const concept = getVal(['출제내용', '세부유형', '유형내용', '문항내용', '핵심개념']);
-                                        
-                                        let rawMajor = getVal(['대단원']);
-                                        if(!rawMajor) rawMajor = getVal(['단원명', '단원', '영역'], ['소단원', '중단원', '세부']);
-                                        let majorUnit = rawMajor ? String(rawMajor).split(/[\(\[\-\:\>_]/)[0].trim() : '수학 종합';
-                                        
-                                        let minorUnit = getVal(['중단원']);
-                                        if(!minorUnit) minorUnit = getVal(['소단원', '세부']);
-
-                                        let schoolStr = getVal(['학교명', '학교']);
-                                        if (!schoolStr) {
-                                            const match = file.name.match(/[가-힣a-zA-Z0-9]+(?:중|고|여중|남중|여고|남고|중학교|고등학교)/);
-                                            if (match) schoolStr = match[0];
+                                        let aoa = [];
+                                        if (file.name.toLowerCase().endsWith('.csv') || file.name.toLowerCase().endsWith('.tsv')) {
+                                            text = text.replace(/\r/g, ''); 
+                                            const sep = text.includes('\t') ? '\t' : ',';
+                                            aoa = text.trim().split('\n').map(l => l.split(sep));
+                                        } else {
+                                            const tempWb = window.XLSX.read(new Uint8Array(buffer), { type: 'array' });
+                                            aoa = window.XLSX.utils.sheet_to_json(tempWb.Sheets[tempWb.SheetNames[0]], { header: 1, defval: "" });
                                         }
-                                        
-                                        return {
-                                            period: parsedPeriod,
-                                            rawPeriod: rawPeriod,
-                                            school: schoolStr,
-                                            qNum: parseInt(getVal(['문항번호', '번호', '문항', '순번', 'no', 'No'])) || 0,
-                                            type: getVal(['문항유형', '유형', '형태']),
-                                            difficulty: getVal(['난이도', '수준']),
-                                            majorUnit: majorUnit,
-                                            minorUnit: minorUnit,
-                                            concept: concept,
-                                            score: parseFloat(getVal(['배점', '점수'])) || 0,
-                                            fileName: file.name.split('.')[0].trim() 
-                                        };
-                                    }).filter(e => e.qNum > 0);
-                                    
-                                    addedExams.push(...parsedExams);
-                                } 
-                                else if (fileType === 'V_STUDENT') {
-                                    const fileName = file.name.replace(/\.[^/.]+$/, "").trim();
-                                    let studentName = "학생";
-                                    let finalPeriod = "";
 
-                                    if (fileName.includes('_')) {
-                                        studentName = fileName.split('_')[0].trim();
-                                        const restStr = fileName.substring(fileName.indexOf('_') + 1);
-                                        finalPeriod = parsePeriodString(restStr, '', file.name);
-                                    } else {
-                                        studentName = fileName;
-                                    }
-
-                                    const responses = {};
-                                    cleanJson.forEach(row => {
-                                        const getVal = (keywords) => {
-                                            const key = Object.keys(row).find(k => {
-                                                const cleanK = String(k).replace(/\s+/g, '');
-                                                return keywords.some(kw => cleanK.includes(kw.replace(/\s+/g, '')));
-                                            });
-                                            return key ? String(row[key]).trim() : '';
-                                        };
-                                        const qNumStr = getVal(['문제', '문항', '번호', '순번']).replace(/[^0-9]/g, '');
-                                        if (qNumStr) {
-                                            const qNum = parseInt(qNumStr);
-                                            const rawScore = getVal(['점수', '취득점수']);
-                                            const rawStudentFull = getVal(['배점']); 
-                                            
-                                            const numericMatch = rawScore.replace(/[^0-9.]/g, ''); 
-                                            const numericFullMatch = rawStudentFull.replace(/[^0-9.]/g, ''); 
-                                            
-                                            if (numericMatch !== '') {
-                                                const earned = parseFloat(numericMatch);
-                                                const sFull = parseFloat(numericFullMatch);
-                                                if (!isNaN(sFull) && sFull > 0) {
-                                                    responses[qNum] = { earned: earned, studentFull: sFull };
-                                                } else {
-                                                    responses[qNum] = earned;
+                                        if (aoa.length > 0) {
+                                            // 🌟 마스터 DB (분류코드) 스캔 🌟
+                                            const firstRowStr = aoa[0].join('').replace(/\s+/g, '');
+                                            if (firstRowStr.includes('풀코드') || firstRowStr.includes('과목코드')) {
+                                                for(let i = 1; i < aoa.length; i++) {
+                                                    const cols = aoa[i];
+                                                    if (cols.length > 10 && cols[0]) {
+                                                        const code = String(cols[0]).trim();
+                                                        currentMasterDB[code] = {
+                                                            major: cols[4] ? String(cols[4]).trim() : '',
+                                                            minor: cols[6] ? String(cols[6]).trim() : '',
+                                                            concept: cols[10] ? String(cols[10]).trim() : ''
+                                                        };
+                                                    }
                                                 }
-                                            } else {
-                                                responses[qNum] = (rawScore.toUpperCase() === 'O' || rawScore === '정답') ? 'O' : 'X';
+                                                isMasterDBUpdated = true;
+                                                return resolve();
                                             }
-                                        }
-                                    });
 
-                                    addedStudents.push({ name: studentName, period: finalPeriod, responses });
-                                }
-                                else if (fileType === 'H_STUDENT') {
-                                    const parsedStudents = cleanJson.map(row => {
-                                        const getVal = (keywords) => {
-                                            const key = Object.keys(row).find(k => {
-                                                const cleanK = String(k).replace(/\s+/g, '');
-                                                return keywords.some(kw => cleanK.includes(kw.replace(/\s+/g, '')));
-                                            });
-                                            return key ? String(row[key]).trim() : '';
-                                        };
-                                        
-                                        const name = getVal(['이름', '학생', '성명']);
-                                        if (!name) return null;
-                                        
-                                        const rawPeriod = getVal(['시험시기', '시기', '학년학기', '출제시기']); 
-                                        let finalPeriod = parsePeriodString(rawPeriod, '', file.name);
-                                        
-                                        const responses = {};
-                                        Object.keys(row).forEach(k => {
-                                            const qNumStr = String(k).replace(/[^0-9]/g, '');
-                                            if (qNumStr) {
-                                                const qNum = parseInt(qNumStr);
-                                                if (qNum > 0 && qNum <= 100) {
-                                                    responses[qNum] = String(row[k]).trim().toUpperCase();
+                                            // 🌟 일반 학생/기출 데이터 스캔 🌟
+                                            let headerIdx = -1;
+                                            let fileType = 'UNKNOWN';
+                                            for (let i = 0; i < Math.min(aoa.length, 15); i++) {
+                                                if (!aoa[i]) continue;
+                                                const rowStr = aoa[i].join(',').replace(/\s+/g, ''); 
+                                                if (rowStr.includes('대단원') || rowStr.includes('단원') || rowStr.includes('난이도') || rowStr.includes('배점') || rowStr.includes('출제내용') || rowStr.includes('출제시기')) { 
+                                                    headerIdx = i; fileType = 'EXAM'; break; 
+                                                }
+                                                if (rowStr.includes('쓴답') || (rowStr.includes('문제') && (rowStr.includes('정답') || rowStr.includes('취득점수')))) { 
+                                                    headerIdx = i; fileType = 'V_STUDENT'; break; 
+                                                }
+                                                if (rowStr.includes('이름') || rowStr.includes('성명') || rowStr.includes('학생')) { 
+                                                    headerIdx = i; fileType = 'H_STUDENT'; break; 
                                                 }
                                             }
-                                        });
 
-                                        return { name, period: finalPeriod, responses };
-                                    }).filter(Boolean);
-                                    
-                                    addedStudents.push(...parsedStudents);
-                                }
-                            } catch (err) {
-                                console.error(err);
-                            }
-                            resolve();
-                        };
-                        reader.readAsArrayBuffer(file);
-                    });
-                }
+                                            if (headerIdx > -1) {
+                                                const headers = aoa[headerIdx].map(h => String(h).trim().replace(/\s+/g, ''));
+                                                const cleanJson = aoa.slice(headerIdx + 1).filter(r => r.some(c => String(c).trim() !== '')).map(row => {
+                                                    const obj = {};
+                                                    headers.forEach((h, idx) => { obj[h] = row[idx]; });
+                                                    return obj;
+                                                });
 
-                const currentTotalExams = [...exams, ...addedExams];
-                const fallbackPeriod = currentTotalExams.length > 0 ? currentTotalExams[0].period : '';
+                                                if (fileType === 'EXAM') {
+                                                    const parsedExams = cleanJson.map(row => {
+                                                        const getVal = (keywords, excludes = []) => {
+                                                            const key = Object.keys(row).find(k => {
+                                                                const cleanK = String(k).replace(/\s+/g, '');
+                                                                const isMatch = keywords.some(kw => cleanK.includes(kw.replace(/\s+/g, '')));
+                                                                const isExcluded = excludes.some(ex => cleanK.includes(ex.replace(/\s+/g, '')));
+                                                                return isMatch && !isExcluded;
+                                                            });
+                                                            return key ? String(row[key]).trim() : '';
+                                                        };
+                                                        
+                                                        const rawPeriod = getVal(['출제시기', '시기']); 
+                                                        const rawGrade = getVal(['학년']); 
+                                                        const parsedPeriod = parsePeriodString(rawPeriod, rawGrade, file.name);
+                                                        
+                                                        const concept = getVal(['출제내용', '세부유형', '유형내용', '문항내용', '핵심개념']);
+                                                        
+                                                        let rawMajor = getVal(['대단원']);
+                                                        if(!rawMajor) rawMajor = getVal(['단원명', '단원', '영역'], ['소단원', '중단원', '세부']);
+                                                        
+                                                        let minorUnit = getVal(['중단원']);
+                                                        if(!minorUnit) minorUnit = getVal(['소단원', '세부']);
 
-                addedStudents = addedStudents.map(s => {
-                    let finalPeriod = s.period;
-                    let isExactMatch = currentTotalExams.some(ex => ex.period === finalPeriod);
-                    
-                    if (!isExactMatch && currentTotalExams.length > 0) {
-                        const semPrefix = finalPeriod ? finalPeriod.split(' ')[0] : '';
-                        const partialMatch = currentTotalExams.find(ex => ex.period.startsWith(semPrefix));
-                        
-                        if (partialMatch) finalPeriod = partialMatch.period;
-                        else finalPeriod = fallbackPeriod;
-                    } else if (!finalPeriod || finalPeriod === '-' || finalPeriod.split(' ').length < 2) {
-                        finalPeriod = fallbackPeriod;
+                                                        let schoolStr = getVal(['학교명', '학교']);
+                                                        if (!schoolStr) {
+                                                            const match = file.name.match(/[가-힣a-zA-Z0-9]+(?:중|고|여중|남중|여고|남고|중학교|고등학교)/);
+                                                            if (match) schoolStr = match[0];
+                                                        }
+                                                        
+                                                        return {
+                                                            period: parsedPeriod,
+                                                            rawPeriod: rawPeriod,
+                                                            school: schoolStr,
+                                                            qNum: parseInt(getVal(['문항번호', '번호', '문항', '순번', 'no', 'No'])) || 0,
+                                                            type: getVal(['문항유형', '유형', '형태']),
+                                                            difficulty: getVal(['난이도', '수준']),
+                                                            majorUnit: rawMajor || '수학 종합',
+                                                            minorUnit: minorUnit,
+                                                            concept: concept,
+                                                            score: parseFloat(getVal(['배점', '점수'])) || 0,
+                                                            fileName: file.name.split('.')[0].trim() 
+                                                        };
+                                                    }).filter(e => e.qNum > 0);
+                                                    
+                                                    addedExams.push(...parsedExams);
+                                                } 
+                                                else if (fileType === 'V_STUDENT') {
+                                                    const fileName = file.name.replace(/\.[^/.]+$/, "").trim();
+                                                    let studentName = "학생";
+                                                    let finalPeriod = "";
+
+                                                    if (fileName.includes('_')) {
+                                                        studentName = fileName.split('_')[0].trim();
+                                                        const restStr = fileName.substring(fileName.indexOf('_') + 1);
+                                                        finalPeriod = parsePeriodString(restStr, '', file.name);
+                                                    } else {
+                                                        studentName = fileName;
+                                                    }
+
+                                                    const responses = {};
+                                                    cleanJson.forEach(row => {
+                                                        const getVal = (keywords) => {
+                                                            const key = Object.keys(row).find(k => {
+                                                                const cleanK = String(k).replace(/\s+/g, '');
+                                                                return keywords.some(kw => cleanK.includes(kw.replace(/\s+/g, '')));
+                                                            });
+                                                            return key ? String(row[key]).trim() : '';
+                                                        };
+                                                        const qNumStr = getVal(['문제', '문항', '번호', '순번']).replace(/[^0-9]/g, '');
+                                                        if (qNumStr) {
+                                                            const qNum = parseInt(qNumStr);
+                                                            const rawScore = getVal(['점수', '취득점수']);
+                                                            const rawStudentFull = getVal(['배점']); 
+                                                            
+                                                            const numericMatch = rawScore.replace(/[^0-9.]/g, ''); 
+                                                            const numericFullMatch = rawStudentFull.replace(/[^0-9.]/g, ''); 
+                                                            
+                                                            if (numericMatch !== '') {
+                                                                const earned = parseFloat(numericMatch);
+                                                                const sFull = parseFloat(numericFullMatch);
+                                                                if (!isNaN(sFull) && sFull > 0) {
+                                                                    responses[qNum] = { earned: earned, studentFull: sFull };
+                                                                } else {
+                                                                    responses[qNum] = earned;
+                                                                }
+                                                            } else {
+                                                                responses[qNum] = (rawScore.toUpperCase() === 'O' || rawScore === '정답') ? 'O' : 'X';
+                                                            }
+                                                        }
+                                                    });
+
+                                                    addedStudents.push({ name: studentName, period: finalPeriod, responses });
+                                                }
+                                                else if (fileType === 'H_STUDENT') {
+                                                    const parsedStudents = cleanJson.map(row => {
+                                                        const getVal = (keywords) => {
+                                                            const key = Object.keys(row).find(k => {
+                                                                const cleanK = String(k).replace(/\s+/g, '');
+                                                                return keywords.some(kw => cleanK.includes(kw.replace(/\s+/g, '')));
+                                                            });
+                                                            return key ? String(row[key]).trim() : '';
+                                                        };
+                                                        
+                                                        const name = getVal(['이름', '학생', '성명']);
+                                                        if (!name) return null;
+                                                        
+                                                        const rawPeriod = getVal(['시험시기', '시기', '학년학기', '출제시기']); 
+                                                        let finalPeriod = parsePeriodString(rawPeriod, '', file.name);
+                                                        
+                                                        const responses = {};
+                                                        Object.keys(row).forEach(k => {
+                                                            const qNumStr = String(k).replace(/[^0-9]/g, '');
+                                                            if (qNumStr) {
+                                                                const qNum = parseInt(qNumStr);
+                                                                if (qNum > 0 && qNum <= 100) {
+                                                                    responses[qNum] = String(row[k]).trim().toUpperCase();
+                                                                }
+                                                            }
+                                                        });
+
+                                                        return { name, period: finalPeriod, responses };
+                                                    }).filter(Boolean);
+                                                    
+                                                    addedStudents.push(...parsedStudents);
+                                                }
+                                            }
+                                        }
+                                    } catch (err) {
+                                        console.error(err);
+                                    }
+                                    resolve();
+                                };
+                                reader.readAsArrayBuffer(file);
+                            });
+                        }
                     }
-                    
-                    s.period = finalPeriod;
-                    return s;
-                });
 
-                if (addedExams.length > 0) {
-                    setExams(prev => [...prev.filter(p => !addedExams.some(n => n.period === p.period)), ...addedExams]);
-                    addedExams.forEach(ex => {
-                        db.collection('artifacts').doc(appId).collection('public').doc('data').collection('exams').doc(`${ex.period}_${ex.qNum}`).set(ex).catch(e => console.warn(e));
+                    // 🌟 마스터 DB 저장 업데이트 🌟
+                    if (isMasterDBUpdated) {
+                        setMasterDB(currentMasterDB);
+                        localStorage.setItem('math_master_codes_cache', JSON.stringify(currentMasterDB));
+                    }
+
+                    // 🌟 2. 이미지 파일 자동 AI 분석 처리 🌟
+                    if (imageFiles.length > 0) {
+                        const fileUrl = URL.createObjectURL(imageFiles[0]);
+                        setExamMedia({ url: fileUrl, isImage: true }); 
+                        addedMediaCount += imageFiles.length;
+
+                        const apiKey = "";
+                        const promptText = "다음 이미지들에서 각 수학 문제의 '문제 번호(숫자)', '문항분류코드(MS로 시작하는 14자리 문자열, 예: MS13-10-04-02-17)', '배점(숫자, 없으면 5)', '난이도(숫자 1~10, 없으면 4)'를 추출하세요. 절대 다른 텍스트나 마크다운 블록을 포함하지 말고 순수 JSON 배열만 반환하세요. 형식: [{\"qNum\": 1, \"code\": \"MS13-10-04-02-17\", \"score\": 5, \"difficulty\": 4}]";
+                        const parts = [ { text: promptText } ];
+
+                        for(const file of imageFiles) {
+                            const base64 = await new Promise((resolve) => {
+                                const reader = new FileReader();
+                                reader.onload = (e) => resolve(e.target.result);
+                                reader.readAsDataURL(file);
+                            });
+                            parts.push({
+                                inlineData: {
+                                    mimeType: file.type,
+                                    data: base64.split(',')[1]
+                                }
+                            });
+                        }
+
+                        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+                        const payload = {
+                            contents: [{ parts }],
+                            generationConfig: {
+                                responseMimeType: "application/json",
+                                responseSchema: {
+                                    type: "ARRAY",
+                                    items: {
+                                        type: "OBJECT",
+                                        properties: {
+                                            qNum: { type: "INTEGER", description: "문제 번호" },
+                                            code: { type: "STRING", description: "MS로 시작하는 문항분류코드" },
+                                            score: { type: "NUMBER", description: "배점 (없으면 5)" },
+                                            difficulty: { type: "INTEGER", description: "난이도 숫자 1~10 (없으면 4)" }
+                                        }
+                                    }
+                                }
+                            }
+                        };
+
+                        let retries = 5;
+                        let delay = 1000;
+                        let data = null;
+                        while(retries > 0) {
+                            try {
+                                const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                                if (!response.ok) throw new Error("API Fail");
+                                data = await response.json();
+                                break;
+                            } catch(e) {
+                                retries--;
+                                if(retries === 0) throw e;
+                                await new Promise(r => setTimeout(r, delay));
+                                delay *= 2;
+                            }
+                        }
+
+                        if(data && data.candidates && data.candidates[0].content) {
+                            const text = data.candidates[0].content.parts[0].text;
+                            const jsonResult = JSON.parse(text);
+
+                            const imgFileName = imageFiles[0].name;
+                            const rawPeriod = imgFileName.split('.')[0].trim();
+                            const parsedPeriod = parsePeriodString(rawPeriod, '', imgFileName);
+                            let schoolStr = "";
+                            const schoolMatch = imgFileName.match(/[가-힣a-zA-Z0-9]+(?:중|고|여중|남중|여고|남고|중학교|고등학교)/);
+                            if (schoolMatch) schoolStr = schoolMatch[0];
+
+                            const newExamsFromImg = jsonResult.map(res => {
+                                const code = res.code ? res.code.trim() : '';
+                                const mapped = currentMasterDB[code] || { major: '수학 종합', minor: '분류확인필요', concept: code || '분석불가' };
+
+                                return {
+                                    period: parsedPeriod,
+                                    rawPeriod: rawPeriod,
+                                    school: schoolStr,
+                                    qNum: res.qNum || 0,
+                                    type: "객관식",
+                                    difficulty: res.difficulty || 4,
+                                    majorUnit: mapped.major,
+                                    minorUnit: mapped.minor,
+                                    concept: mapped.concept,
+                                    score: res.score || 5,
+                                    fileName: rawPeriod
+                                };
+                            }).filter(e => e.qNum > 0);
+
+                            addedExams.push(...newExamsFromImg);
+                        }
+                    }
+
+                    // 🌟 데이터 저장 및 통합 업데이트 🌟
+                    const currentTotalExams = [...exams, ...addedExams];
+                    const fallbackPeriod = currentTotalExams.length > 0 ? currentTotalExams[0].period : '';
+
+                    addedStudents = addedStudents.map(s => {
+                        let finalPeriod = s.period;
+                        let isExactMatch = currentTotalExams.some(ex => ex.period === finalPeriod);
+                        
+                        if (!isExactMatch && currentTotalExams.length > 0) {
+                            const semPrefix = finalPeriod ? finalPeriod.split(' ')[0] : '';
+                            const partialMatch = currentTotalExams.find(ex => ex.period.startsWith(semPrefix));
+                            
+                            if (partialMatch) finalPeriod = partialMatch.period;
+                            else finalPeriod = fallbackPeriod;
+                        } else if (!finalPeriod || finalPeriod === '-' || finalPeriod.split(' ').length < 2) {
+                            finalPeriod = fallbackPeriod;
+                        }
+                        
+                        s.period = finalPeriod;
+                        return s;
                     });
-                    
-                    const latestPeriod = addedExams[addedExams.length - 1].period;
-                    setFilters(prev => ({
-                        ...prev,
-                        semester: latestPeriod.split(' ')[0] || latestPeriod,
-                        examType: latestPeriod.split(' ').slice(1).join(' ') || ''
-                    }));
-                    setViewMode('exam');
-                }
 
-                if (addedStudents.length > 0) {
-                    setStudents(prev => [...prev.filter(p => !addedStudents.some(n => n.name === p.name && n.period === p.period)), ...addedStudents]);
-                    addedStudents.forEach(s => {
-                        const saveObj = { name: s.name, period: s.period, responses: s.responses };
-                        db.collection('artifacts').doc(appId).collection('public').doc('data').collection('students').doc(`${s.name}_${s.period}`).set(saveObj).catch(e => console.warn(e));
-                    });
-                }
+                    if (addedExams.length > 0) {
+                        setExams(prev => [...prev.filter(p => !addedExams.some(n => n.period === p.period && n.qNum === p.qNum)), ...addedExams]);
+                        addedExams.forEach(ex => {
+                            db.collection('artifacts').doc(appId).collection('public').doc('data').collection('exams').doc(`${ex.period}_${ex.qNum}`).set(ex).catch(e => console.warn(e));
+                        });
+                        
+                        const latestPeriod = addedExams[addedExams.length - 1].period;
+                        setFilters(prev => ({
+                            ...prev,
+                            semester: latestPeriod.split(' ')[0] || latestPeriod,
+                            examType: latestPeriod.split(' ').slice(1).join(' ') || ''
+                        }));
+                        setViewMode('exam');
+                    }
 
-                let msg = [];
-                if (addedExams.length > 0) msg.push(`시험 ${addedExams.length}건`);
-                if (addedStudents.length > 0) msg.push(`학생 ${addedStudents.length}명`);
-                if (addedMediaCount > 0) msg.push(`원문/이미지 ${addedMediaCount}건`);
+                    if (addedStudents.length > 0) {
+                        setStudents(prev => [...prev.filter(p => !addedStudents.some(n => n.name === p.name && n.period === p.period)), ...addedStudents]);
+                        addedStudents.forEach(s => {
+                            const saveObj = { name: s.name, period: s.period, responses: s.responses };
+                            db.collection('artifacts').doc(appId).collection('public').doc('data').collection('students').doc(`${s.name}_${s.period}`).set(saveObj).catch(e => console.warn(e));
+                        });
+                    }
 
-                if (msg.length > 0) {
-                    showToast(`✅ 업로드 완료! (${msg.join(', ')})`, 'success');
-                } else {
-                    showToast(`❌ 인식된 데이터가 없습니다. 파일 양식을 확인해주세요.`, 'error');
+                    let msg = [];
+                    if (isMasterDBUpdated) msg.push(`분류코드 마스터DB 적용`);
+                    if (addedExams.length > 0) msg.push(`기출분석 ${addedExams.length}문항`);
+                    if (addedStudents.length > 0) msg.push(`학생 ${addedStudents.length}명`);
+                    if (addedMediaCount > 0) msg.push(`원문보기 지원`);
+
+                    if (msg.length > 0) {
+                        showToast(`✅ 업로드 및 분석 완료! (${msg.join(', ')})`, 'success');
+                    } else {
+                        showToast(`❌ 인식된 데이터가 없습니다. 파일 양식을 확인해주세요.`, 'error');
+                    }
+                } catch(error) {
+                    console.error(error);
+                    showToast("파일 처리 중 오류가 발생했습니다.", "error");
+                } finally {
+                    setIsGenerating(false);
+                    e.target.value = '';
                 }
-                
-                e.target.value = '';
             };
 
             const handleCopyLink = async () => {
@@ -1630,70 +1595,6 @@
                         </div>
                     )}
 
-                    {/* 🌟 AI 이미지 분석 모달 🌟 */}
-                    {showAIModal && (
-                        <div className="fixed inset-0 bg-slate-900/60 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm no-print">
-                            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
-                                <div className="p-5 border-b flex justify-between items-center bg-slate-50">
-                                    <h2 className="text-xl font-black text-slate-800 flex items-center gap-2"><Icon name="sparkles" className="text-purple-600"/> AI 기출 이미지 자동 분석</h2>
-                                    <button onClick={() => setShowAIModal(false)} className="cursor-pointer text-slate-400 hover:text-slate-700 bg-white rounded-full p-1 border shadow-sm transition-colors"><Icon name="x" size={18}/></button>
-                                </div>
-                                
-                                <div className="p-6 overflow-y-auto flex-1 space-y-6">
-                                    <div className="bg-purple-50 p-4 rounded-xl border border-purple-100 flex justify-between items-center">
-                                        <div>
-                                            <h3 className="font-bold text-purple-900 text-sm mb-1">1. 분류코드 마스터 DB 연동</h3>
-                                            <p className="text-xs text-purple-700">현재 <strong className="text-purple-900 text-lg">{Object.keys(masterDB).length}</strong>개의 문항분류코드가 로드되어 있습니다.</p>
-                                        </div>
-                                        <label className="cursor-pointer bg-white text-purple-700 px-3 py-2 rounded-lg text-xs font-bold border border-purple-200 hover:bg-purple-100 shadow-sm transition-colors">
-                                            전체 분류코드 CSV 업로드
-                                            <input type="file" accept=".csv" className="hidden" onChange={handleMasterDBUpload} />
-                                        </label>
-                                    </div>
-
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="block text-xs font-bold text-slate-500 mb-1.5">시험 시기 (필수입력)</label>
-                                            <input type="text" placeholder="예: 중2-1 기말" value={aiPeriodInput} onChange={e => setAiPeriodInput(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 focus:outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-400" />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-bold text-slate-500 mb-1.5">학교명 (선택)</label>
-                                            <input type="text" placeholder="예: 신곡중" value={aiSchoolInput} onChange={e => setAiSchoolInput(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 focus:outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-400" />
-                                        </div>
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-500 mb-1.5">2. 시험지 문항 이미지 첨부</label>
-                                        <label className="w-full border-2 border-dashed border-slate-300 rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-50 hover:border-purple-300 transition-all">
-                                            <Icon name="image-plus" size={32} className="text-slate-400 mb-2"/>
-                                            <span className="font-bold text-sm text-slate-600">클릭하여 문항 분류코드(MS~)가 포함된 이미지를 선택하세요</span>
-                                            <input type="file" accept="image/*" multiple className="hidden" onChange={handleAIImageSelection} />
-                                        </label>
-
-                                        {selectedImages.length > 0 && (
-                                            <div className="mt-4 flex gap-2 overflow-x-auto pb-2">
-                                                {selectedImages.map((img, i) => (
-                                                    <div key={i} className="relative shrink-0 w-20 h-20 rounded-lg overflow-hidden border border-slate-200 shadow-sm group">
-                                                        <img src={img.base64} className="w-full h-full object-cover" />
-                                                        <button onClick={() => setSelectedImages(p => p.filter((_, idx) => idx !== i))} className="cursor-pointer absolute top-1 right-1 bg-red-500/80 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"><Icon name="x" size={12}/></button>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                                
-                                <div className="p-5 border-t bg-slate-50 flex justify-between items-center rounded-b-2xl">
-                                    <span className="text-xs text-slate-500 font-bold">이미지의 문항 번호, 코드, 배점을 AI가 읽어들입니다.</span>
-                                    <button onClick={processAIAnalysis} disabled={aiLoading || Object.keys(masterDB).length === 0 || selectedImages.length === 0 || !aiPeriodInput} className="cursor-pointer bg-purple-600 text-white px-6 py-2.5 rounded-lg text-sm font-bold shadow-md hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
-                                        {aiLoading ? <Icon name="loader-2" size={16} className="animate-spin-slow" /> : <Icon name="wand-2" size={16}/>}
-                                        {aiLoading ? '인공지능 분석 중...' : '자동 분석 시작'}
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
                     {confirmModal.show && (
                         <div className="fixed inset-0 bg-slate-900/40 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm">
                             <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full animate-in zoom-in-95">
@@ -1783,13 +1684,10 @@
                                     <Icon name={examMedia.isImage ? "image" : "file-text"} size={16}/> 원문 보기
                                 </button>
                             )}
-                            
-                            <button onClick={() => setShowAIModal(true)} className="cursor-pointer bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-1.5 shadow-md transition-colors mr-2">
-                                <Icon name="sparkles" size={16}/> AI 기출 분석
-                            </button>
 
-                            <label className="cursor-pointer bg-slate-100 px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-1.5 border hover:bg-slate-200 transition-colors" title="분석 엑셀, 학생 CSV, 시험지 PDF, 이미지 파일을 함께 업로드하세요.">
-                                <Icon name="file-up" size={16}/> 데이터 업로드
+                            <label className="cursor-pointer bg-slate-100 px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-1.5 border hover:bg-slate-200 transition-colors" title="클릭하여 데이터(분석 엑셀, 마스터DB, 이미지 등)를 업로드하세요.">
+                                {isGenerating ? <Icon name="loader-2" size={16} className="animate-spin-slow text-indigo-600" /> : <Icon name="file-up" size={16} className="text-slate-700" />}
+                                {isGenerating ? '처리 중...' : '데이터 업로드'}
                                 <input type="file" accept=".xlsx, .xls, .csv, .tsv, .pdf, image/*" multiple className="hidden" onClick={(e) => (e.target.value = '')} onChange={handleFileUpload} />
                             </label>
 
@@ -1799,8 +1697,7 @@
                         
                             {viewMode === 'student' && (
                                 <button onClick={handleCopyLink} className="cursor-pointer bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-1.5 shadow-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled={!analysisData || isGenerating}>
-                                    {isGenerating ? <Icon name="loader-2" size={16} className="animate-spin-slow" /> : <Icon name="link" size={16}/>}
-                                    {isGenerating ? '링크 생성 중...' : '링크 복사'}
+                                    <Icon name="link" size={16}/> 링크 복사
                                 </button>
                             )}
 
@@ -1860,8 +1757,8 @@
                             <Icon name="cloud" size={64} className="mx-auto mb-4 opacity-20" />
                             <h2 className="text-xl font-black mb-2 uppercase tracking-tight text-slate-400">Database Ready</h2>
                             <p className="text-sm font-medium text-slate-400 leading-relaxed">
-                                상단의 <strong>[데이터 업로드]</strong> 또는 <strong>[AI 기출 분석]</strong> 버튼을 눌러 작업을 시작하세요.<br/>
-                                <span className="opacity-70">✅ 분석용 엑셀/CSV 데이터와 <strong>원문(PDF/이미지)</strong>을 함께 올리시면 뷰어 기능을 사용할 수 있습니다.</span>
+                                상단의 <strong>[데이터 업로드]</strong> 버튼을 눌러 작업을 시작하세요.<br/>
+                                <span className="opacity-70">✅ 분류코드 마스터DB, 분석용 엑셀/CSV, <strong>원문(PDF/이미지)</strong>을 모두 하나의 버튼으로 처리합니다.</span>
                             </p>
                         </div>
                     )}
