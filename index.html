@@ -225,13 +225,19 @@
                 });
 
                 let totalScoreCalc = 0, maxScore = 0;
-                const unitStats = {}, diffStats = { '상': {total:0, correct:0}, '중': {total:0, correct:0}, '하': {total:0, correct:0} }, typeStats = {};
+                const unitStats = {};
+                const diffStats = { '상': {total:0, correct:0}, '중': {total:0, correct:0}, '하': {total:0, correct:0} };
+                const typeStats = {};
 
                 results.forEach(r => {
                     totalScoreCalc += r.earnedScore !== undefined ? r.earnedScore : (r.isCorrect ? r.score : 0); 
                     maxScore += r.fullScore !== undefined ? r.fullScore : r.score;
-                    if(!unitStats[r.majorUnit]) unitStats[r.majorUnit] = { total: 0, correct: 0 };
-                    unitStats[r.majorUnit].total++; if(r.earnedScore > 0) unitStats[r.majorUnit].correct++;
+                    
+                    let cleanMajor = r.majorUnit ? r.majorUnit.trim() : '기타';
+                    cleanMajor = cleanMajor.replace(/\s*[\(\[].*?[\)\]]/g, '').trim();
+
+                    if(!unitStats[cleanMajor]) unitStats[cleanMajor] = { total: 0, correct: 0 };
+                    unitStats[cleanMajor].total++; if(r.earnedScore > 0) unitStats[cleanMajor].correct++;
 
                     let d = String(r.difficulty || '중');
                     if (d.includes('상') || d.includes('어려움') || d.includes('7') || d.includes('8')) d = '상';
@@ -517,8 +523,8 @@
                         </div>
 
                         <div className="px-4 -mt-10 relative z-20 mb-6">
-                            <div className="bg-white rounded-2xl shadow-xl border border-slate-100 p-5 flex items-center gap-4">
-                                <div className="flex flex-col items-center justify-center flex-shrink-0 pr-4 border-r border-slate-100 w-[100px]">
+                            <div className="bg-white rounded-2xl shadow-xl border border-slate-100 p-5 flex items-stretch gap-4">
+                                <div className="flex flex-col items-center justify-center flex-shrink-0 pr-4 border-r border-slate-100 min-w-[90px]">
                                     <span className="text-[12px] font-bold text-slate-500 mb-1">{data.name} 학생</span>
                                     <div className="flex items-baseline gap-0.5 text-indigo-600">
                                         <span className="text-3xl font-black tracking-tighter">{data.score}</span>
@@ -589,7 +595,6 @@
             );
         };
 
-        // --- 📊 기출 분석 전용 뷰 컴포넌트 🌟 ---
         const ExamAnalysisView = ({ data }) => {
             const [questionImages, setQuestionImages] = useState({});
 
@@ -612,7 +617,6 @@
                         <div className="border-b-4 border-orange-500 pb-4 mb-6 flex justify-between items-end">
                             <div>
                                 <div className="text-orange-500 font-black text-xs tracking-widest mb-1 uppercase tracking-tighter">Exam Analysis Report</div>
-                                {/* 🌟 제목 텍스트 수정 (파일명 + 수학기출 분석) 🌟 */}
                                 <h1 className="text-[26px] font-black text-slate-900 leading-tight break-keep">
                                     <span className="text-orange-600 mr-2">{data.fileName}</span>수학기출 분석
                                 </h1>
@@ -755,8 +759,15 @@
             const [toast, setToast] = useState({ show: false, message: '', type: 'info' });
             const [confirmModal, setConfirmModal] = useState({ show: false, message: '', onConfirm: null });
             const [linkModal, setLinkModal] = useState({ show: false, url: '' });
-            const [pdfModal, setPdfModal] = useState({ show: false, url: '' }); 
+            const [pdfModal, setPdfModal] = useState({ show: false, url: '', isImage: false }); 
             
+            const [masterDB, setMasterDB] = useState(() => JSON.parse(localStorage.getItem('math_master_codes_cache') || '{}'));
+            const [showAIModal, setShowAIModal] = useState(false);
+            const [aiPeriodInput, setAiPeriodInput] = useState('');
+            const [aiSchoolInput, setAiSchoolInput] = useState('');
+            const [selectedImages, setSelectedImages] = useState([]);
+            const [aiLoading, setAiLoading] = useState(false);
+
             const [isStudentView, setIsStudentView] = useState(false);
             const [studentReportData, setStudentReportData] = useState(null);
             const [isGenerating, setIsGenerating] = useState(false);
@@ -765,7 +776,7 @@
 
             const [exams, setExams] = useState(() => JSON.parse(localStorage.getItem('math_exams_cache') || '[]'));
             const [students, setStudents] = useState(() => JSON.parse(localStorage.getItem('math_students_cache') || '[]'));
-            const [examPdfUrl, setExamPdfUrl] = useState(null); 
+            const [examMedia, setExamMedia] = useState(null); 
             
             const [filters, setFilters] = useState({ semester: '', examType: '', studentName: '' });
             const [showDataModal, setShowDataModal] = useState(false);
@@ -781,7 +792,7 @@
                 const initFirebase = async () => {
                     try {
                         await auth.signInAnonymously().catch(err => {
-                            console.warn("Firebase 익명 로그인 실패. 콘솔 설정을 확인하세요:", err);
+                            console.warn("Firebase 익명 로그인 실패:", err);
                         });
                         
                         auth.onAuthStateChanged((u) => {
@@ -894,8 +905,11 @@
 
                 const unitStats = {};
                 results.forEach(r => {
-                    if(!unitStats[r.majorUnit]) unitStats[r.majorUnit] = { total: 0, correct: 0 };
-                    unitStats[r.majorUnit].total++; if(r.earnedScore > 0) unitStats[r.majorUnit].correct++;
+                    let major = r.majorUnit ? r.majorUnit.trim() : '기타';
+                    major = major.replace(/\s*[\(\[].*?[\)\]]/g, '').trim();
+
+                    if(!unitStats[major]) unitStats[major] = { total: 0, correct: 0 };
+                    unitStats[major].total++; if(r.earnedScore > 0) unitStats[major].correct++;
                 });
                 const unitData = Object.entries(unitStats).map(([name, stats]) => ({ name, ...stats }));
 
@@ -950,10 +964,29 @@
                     if (yearMatch && !schoolName.includes('년')) schoolName = `${yearMatch[0]}년 ${schoolName}`;
                 }
                 
-                const scopes = [...new Set(targetExams.map(e => e.majorUnit))].filter(Boolean);
+                const unitMap = new Map();
+                targetExams.forEach(e => {
+                    let major = e.majorUnit ? e.majorUnit.trim() : '';
+                    major = major.replace(/\s*[\(\[].*?[\)\]]/g, '').trim();
+                    if (major) {
+                        if (!unitMap.has(major)) unitMap.set(major, new Set());
+                        if (e.minorUnit && e.minorUnit.trim() !== '') {
+                            unitMap.get(major).add(e.minorUnit.trim());
+                        }
+                    }
+                });
+                const scopes = Array.from(unitMap.entries()).map(([major, minorSet]) => {
+                    const minors = Array.from(minorSet);
+                    if (minors.length > 0) return `${major} (${minors.join(', ')})`;
+                    return major;
+                });
                 
                 const unitCounts = {};
-                targetExams.forEach(e => { unitCounts[e.majorUnit] = (unitCounts[e.majorUnit] || 0) + 1; });
+                targetExams.forEach(e => { 
+                    let major = e.majorUnit ? e.majorUnit.trim() : '기타';
+                    major = major.replace(/\s*[\(\[].*?[\)\]]/g, '').trim();
+                    unitCounts[major] = (unitCounts[major] || 0) + 1; 
+                });
                 const unitDistribution = Object.entries(unitCounts).map(([name, count]) => ({
                     name, count, total: targetExams.length, percent: Math.round((count / targetExams.length) * 100)
                 })).sort((a,b) => b.count - a.count);
@@ -998,17 +1031,21 @@
                     { name: '7~8단계', total: targetExams.length, correct: diffLevels['7~8단계'], percent: Math.round((diffLevels['7~8단계']/targetExams.length)*100), color: '#f87171' } 
                 ].filter(d => d.correct > 0);
 
-                let hardestUnit = scopes.length > 0 ? scopes[0].split(' ')[0] : '전체';
+                let hardestUnit = unitDistribution.length > 0 ? unitDistribution[0].name : '전체';
                 if (unitDistribution.length > 0) {
                     let maxDiffAvg = 0;
                     Object.entries(unitCounts).forEach(([u, count]) => {
-                        const sumDiff = processedExams.filter(e=>e.majorUnit === u).reduce((s,e)=>s+e.numericDifficulty,0);
+                        const sumDiff = processedExams.filter(e => {
+                            let mu = e.majorUnit ? e.majorUnit.trim() : '기타';
+                            mu = mu.replace(/\s*[\(\[].*?[\)\]]/g, '').trim();
+                            return mu === u;
+                        }).reduce((s,e)=>s+e.numericDifficulty,0);
                         const avg = sumDiff / count;
                         if (avg > maxDiffAvg) { maxDiffAvg = avg; hardestUnit = u; }
                     });
                 }
                 
-                const mainUnit = unitDistribution.length > 0 ? unitDistribution[0].name : (scopes.length > 0 ? scopes[0].split(' ')[0] : '전체');
+                const mainUnit = unitDistribution.length > 0 ? unitDistribution[0].name : '전체';
                 const trendComment = `이번 ${schoolName} ${targetPeriod} 시험은 총 ${targetExams.length}문항으로 구성되었으며, 주로 [${mainUnit}] 단원을 중심으로 출제되었습니다.\n특히 [${hardestUnit}] 단원에서 고난도 변별력 문항이 집중 배치되어 전반적인 체감 난이도를 상승시키는 요인으로 작용했습니다. 단순 개념 암기를 넘어 주어진 조건을 정확히 해석하고 복합적인 원리를 적용해야 하는 문항이 포함되어 있으므로, 취약 유형에 대한 심층적인 분석과 단계별 풀이 훈련이 요구됩니다.`;
 
                 const coreQuestions = [...processedExams].sort((a,b) => b.numericDifficulty - a.numericDifficulty).slice(0, 2).map(q => {
@@ -1026,7 +1063,6 @@
                     return { ...q, aiPoint: p, aiStrategy: s };
                 });
 
-                // 🌟 파일명 추가 반영
                 const fileName = targetExams[0]?.fileName || (schoolName ? `${schoolName} ${targetPeriod}` : targetPeriod);
 
                 return { targetPeriod, schoolName, fileName, scopes, unitDistribution, diffLevelsList, targetExams: processedExams, trendComment, coreQuestions };
@@ -1034,20 +1070,185 @@
 
             const comments = useMemo(() => generateAIComment(analysisData), [analysisData]);
 
+            const handleMasterDBUpload = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                const reader = new FileReader();
+                reader.onload = (evt) => {
+                    const buffer = evt.target.result;
+                    let text = ""; 
+                    try { text = new TextDecoder('utf-8', {fatal:true}).decode(new Uint8Array(buffer)); } 
+                    catch(err) { text = new TextDecoder('euc-kr').decode(new Uint8Array(buffer)); }
+                    
+                    const lines = text.replace(/\r/g, '').split('\n');
+                    if(lines.length < 2) return showToast("데이터가 없습니다.", "error");
+                    
+                    const codeMap = {};
+                    for(let i = 1; i < lines.length; i++) {
+                        const row = lines[i];
+                        if(!row.trim()) continue;
+                        
+                        const cols = row.includes('\t') ? row.split('\t') : row.split(',');
+                        if (cols.length > 10) {
+                            const code = cols[0].trim();
+                            codeMap[code] = {
+                                major: cols[4] ? cols[4].trim() : '',
+                                minor: cols[6] ? cols[6].trim() : '',
+                                concept: cols[10] ? cols[10].trim() : ''
+                            };
+                        }
+                    }
+                    
+                    try {
+                        localStorage.setItem('math_master_codes_cache', JSON.stringify(codeMap));
+                        setMasterDB(codeMap);
+                        showToast(`✅ 마스터 DB ${Object.keys(codeMap).length}개 문항분류코드 로드 완료!`, 'success');
+                    } catch(e) {
+                        console.error("Storage limit", e);
+                        showToast("분류코드 데이터가 너무 큽니다. 캐시를 지우거나 파일을 줄여주세요.", "error");
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+                e.target.value = '';
+            };
+
+            const handleAIImageSelection = (e) => {
+                const files = Array.from(e.target.files);
+                Promise.all(files.map(file => new Promise(resolve => {
+                    const reader = new FileReader();
+                    reader.onload = (evt) => resolve({ name: file.name, base64: evt.target.result });
+                    reader.readAsDataURL(file);
+                }))).then(images => {
+                    setSelectedImages(prev => [...prev, ...images]);
+                });
+                e.target.value = '';
+            };
+
+            const processAIAnalysis = async () => {
+                if(!aiPeriodInput) return showToast("시험 시기를 입력해주세요.", "error");
+                if(selectedImages.length === 0) return showToast("문항 이미지를 첨부해주세요.", "error");
+
+                setAiLoading(true);
+                try {
+                    const apiKey = "";
+                    const promptText = "다음 이미지들에서 각 수학 문제의 '문제 번호(숫자)', '문항분류코드(MS로 시작하는 14자리 문자열, 예: MS13-10-04-02-17)', '배점(숫자, 없으면 5)', '난이도(숫자 1~10, 없으면 4)'를 추출하세요. 절대 다른 텍스트나 마크다운 블록을 포함하지 말고 순수 JSON 배열만 반환하세요. 형식: [{\"qNum\": 1, \"code\": \"MS13-10-04-02-17\", \"score\": 5, \"difficulty\": 4}]";
+                    
+                    const parts = [ { text: promptText } ];
+
+                    for(const img of selectedImages) {
+                        parts.push({
+                            "inlineData": {
+                                "mimeType": "image/jpeg",
+                                "data": img.base64.split(',')[1]
+                            }
+                        });
+                    }
+
+                    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+                    const payload = {
+                        contents: [{ parts }],
+                        generationConfig: { 
+                            responseMimeType: "application/json",
+                            responseSchema: {
+                                type: "ARRAY",
+                                items: {
+                                    type: "OBJECT",
+                                    properties: {
+                                        qNum: { type: "INTEGER", description: "문제 번호" },
+                                        code: { type: "STRING", description: "MS로 시작하는 문항분류코드" },
+                                        score: { type: "NUMBER", description: "배점 (없으면 5)" },
+                                        difficulty: { type: "INTEGER", description: "난이도 숫자 1~10 (없으면 4)" }
+                                    }
+                                }
+                            }
+                        }
+                    };
+
+                    let retries = 5;
+                    let delay = 1000;
+                    let data = null;
+                    while(retries > 0) {
+                        try {
+                            const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                            if (!response.ok) throw new Error("API Fail");
+                            data = await response.json();
+                            break;
+                        } catch(e) {
+                            retries--;
+                            if(retries === 0) throw e;
+                            await new Promise(r => setTimeout(r, delay));
+                            delay *= 2;
+                        }
+                    }
+
+                    if(!data || !data.candidates || !data.candidates[0].content) throw new Error("결과 없음");
+
+                    const text = data.candidates[0].content.parts[0].text;
+                    const jsonResult = JSON.parse(text);
+
+                    const addedExams = jsonResult.map(res => {
+                        const mapped = masterDB[res.code] || { major: '미분류 단원', minor: '분류코드 확인 필요', concept: res.code || '분석불가' };
+                        return {
+                            period: aiPeriodInput,
+                            rawPeriod: aiPeriodInput,
+                            school: aiSchoolInput || "학교명 미상",
+                            qNum: res.qNum || 0,
+                            type: "객관식",
+                            difficulty: res.difficulty || 4,
+                            majorUnit: mapped.major,
+                            minorUnit: mapped.minor,
+                            concept: mapped.concept,
+                            score: res.score || 5,
+                            fileName: "AI 이미지 분석"
+                        };
+                    }).filter(e => e.qNum > 0);
+
+                    if(addedExams.length > 0) {
+                        setExams(prev => {
+                            const filtered = prev.filter(p => !(p.period === aiPeriodInput && addedExams.some(n => n.qNum === p.qNum)));
+                            return [...filtered, ...addedExams];
+                        });
+                        
+                        addedExams.forEach(ex => {
+                            db.collection('artifacts').doc(appId).collection('public').doc('data').collection('exams').doc(`${ex.period}_${ex.qNum}`).set(ex).catch(e => console.warn(e));
+                        });
+                        
+                        showToast(`✅ AI 분석 완료! ${addedExams.length}개 문항 데이터 생성 성공`, 'success');
+                        setShowAIModal(false);
+                        
+                        setViewMode('exam');
+                        setFilters(prev => ({ 
+                            ...prev, 
+                            semester: aiPeriodInput.split(' ')[0] || aiPeriodInput, 
+                            examType: aiPeriodInput.split(' ').slice(1).join(' ') || '' 
+                        }));
+
+                    } else {
+                        showToast("이미지에서 문항 정보를 찾지 못했습니다.", "error");
+                    }
+                } catch(e) {
+                    console.error(e);
+                    showToast("AI 분석 중 오류가 발생했습니다. 다시 시도해주세요.", "error");
+                } finally {
+                    setAiLoading(false);
+                }
+            };
+
             const handleFileUpload = async (e) => {
                 const files = Array.from(e.target.files);
                 if (files.length === 0) return;
 
                 let addedExams = [];
                 let addedStudents = [];
-                let addedPdfs = 0;
+                let addedMediaCount = 0;
 
                 for (const file of files) {
                     await new Promise((resolve) => {
-                        if (file.name.toLowerCase().endsWith('.pdf')) {
+                        if (file.name.toLowerCase().endsWith('.pdf') || file.type.startsWith('image/')) {
                             const fileUrl = URL.createObjectURL(file);
-                            setExamPdfUrl(fileUrl);
-                            addedPdfs++;
+                            setExamMedia({ url: fileUrl, isImage: file.type.startsWith('image/') });
+                            addedMediaCount++;
                             resolve();
                             return;
                         }
@@ -1075,7 +1276,7 @@
                                 for (let i = 0; i < Math.min(aoa.length, 15); i++) {
                                     if (!aoa[i]) continue;
                                     const rowStr = aoa[i].join(',').replace(/\s+/g, ''); 
-                                    if (rowStr.includes('단원') || rowStr.includes('난이도') || rowStr.includes('배점') || rowStr.includes('출제내용') || rowStr.includes('출제시기')) { 
+                                    if (rowStr.includes('대단원') || rowStr.includes('단원') || rowStr.includes('난이도') || rowStr.includes('배점') || rowStr.includes('출제내용') || rowStr.includes('출제시기')) { 
                                         headerIdx = i; fileType = 'EXAM'; break; 
                                     }
                                     if (rowStr.includes('쓴답') || (rowStr.includes('문제') && (rowStr.includes('정답') || rowStr.includes('취득점수')))) { 
@@ -1097,8 +1298,13 @@
 
                                 if (fileType === 'EXAM') {
                                     const parsedExams = cleanJson.map(row => {
-                                        const getVal = (keywords) => {
-                                            const key = Object.keys(row).find(k => keywords.some(kw => k.includes(kw.replace(/\s+/g, ''))));
+                                        const getVal = (keywords, excludes = []) => {
+                                            const key = Object.keys(row).find(k => {
+                                                const cleanK = String(k).replace(/\s+/g, '');
+                                                const isMatch = keywords.some(kw => cleanK.includes(kw.replace(/\s+/g, '')));
+                                                const isExcluded = excludes.some(ex => cleanK.includes(ex.replace(/\s+/g, '')));
+                                                return isMatch && !isExcluded;
+                                            });
                                             return key ? String(row[key]).trim() : '';
                                         };
                                         
@@ -1107,20 +1313,21 @@
                                         const parsedPeriod = parsePeriodString(rawPeriod, rawGrade, file.name);
                                         
                                         const concept = getVal(['출제내용', '세부유형', '유형내용', '문항내용', '핵심개념']);
-                                        const majorUnit = getVal(['대단원', '단원명', '단원', '영역']);
+                                        const majorUnit = getVal(['대단원', '단원명', '단원', '영역'], ['소단원', '중단원', '세부']);
+                                        const minorUnit = getVal(['소단원', '중단원']);
                                         
                                         return {
                                             period: parsedPeriod,
                                             rawPeriod: rawPeriod,
                                             school: getVal(['학교명', '학교']),
-                                            qNum: parseInt(getVal(['문항번호', '번호', '문항'])) || 0,
+                                            qNum: parseInt(getVal(['문항번호', '번호', '문항', '순번', 'no', 'No'])) || 0,
                                             type: getVal(['문항유형', '유형', '형태']),
                                             difficulty: getVal(['난이도', '수준']),
                                             majorUnit: majorUnit || '수학 종합',
-                                            minorUnit: getVal(['소단원', '중단원']),
+                                            minorUnit: minorUnit,
                                             concept: concept,
                                             score: parseFloat(getVal(['배점', '점수'])) || 0,
-                                            fileName: file.name.split('.')[0].trim() // 🌟 엑셀 파일명 기록
+                                            fileName: file.name.split('.')[0].trim() 
                                         };
                                     }).filter(e => e.qNum > 0);
                                     
@@ -1142,10 +1349,13 @@
                                     const responses = {};
                                     cleanJson.forEach(row => {
                                         const getVal = (keywords) => {
-                                            const key = Object.keys(row).find(k => keywords.some(kw => k.includes(kw.replace(/\s+/g, ''))));
+                                            const key = Object.keys(row).find(k => {
+                                                const cleanK = String(k).replace(/\s+/g, '');
+                                                return keywords.some(kw => cleanK.includes(kw.replace(/\s+/g, '')));
+                                            });
                                             return key ? String(row[key]).trim() : '';
                                         };
-                                        const qNumStr = getVal(['문제', '문항']).replace(/[^0-9]/g, '');
+                                        const qNumStr = getVal(['문제', '문항', '번호', '순번']).replace(/[^0-9]/g, '');
                                         if (qNumStr) {
                                             const qNum = parseInt(qNumStr);
                                             const rawScore = getVal(['점수', '취득점수']);
@@ -1173,7 +1383,10 @@
                                 else if (fileType === 'H_STUDENT') {
                                     const parsedStudents = cleanJson.map(row => {
                                         const getVal = (keywords) => {
-                                            const key = Object.keys(row).find(k => keywords.some(kw => k.includes(kw.replace(/\s+/g, ''))));
+                                            const key = Object.keys(row).find(k => {
+                                                const cleanK = String(k).replace(/\s+/g, '');
+                                                return keywords.some(kw => cleanK.includes(kw.replace(/\s+/g, '')));
+                                            });
                                             return key ? String(row[key]).trim() : '';
                                         };
                                         
@@ -1234,6 +1447,14 @@
                     addedExams.forEach(ex => {
                         db.collection('artifacts').doc(appId).collection('public').doc('data').collection('exams').doc(`${ex.period}_${ex.qNum}`).set(ex).catch(e => console.warn(e));
                     });
+                    
+                    const latestPeriod = addedExams[addedExams.length - 1].period;
+                    setFilters(prev => ({
+                        ...prev,
+                        semester: latestPeriod.split(' ')[0] || latestPeriod,
+                        examType: latestPeriod.split(' ').slice(1).join(' ') || ''
+                    }));
+                    setViewMode('exam');
                 }
 
                 if (addedStudents.length > 0) {
@@ -1247,7 +1468,7 @@
                 let msg = [];
                 if (addedExams.length > 0) msg.push(`시험 ${addedExams.length}건`);
                 if (addedStudents.length > 0) msg.push(`학생 ${addedStudents.length}명`);
-                if (addedPdfs > 0) msg.push(`PDF 원문 ${addedPdfs}건`);
+                if (addedMediaCount > 0) msg.push(`원문/이미지 ${addedMediaCount}건`);
 
                 if (msg.length > 0) {
                     showToast(`✅ 업로드 완료! (${msg.join(', ')})`, 'success');
@@ -1357,6 +1578,70 @@
                         </div>
                     )}
 
+                    {/* 🌟 AI 이미지 분석 모달 🌟 */}
+                    {showAIModal && (
+                        <div className="fixed inset-0 bg-slate-900/60 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm no-print">
+                            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
+                                <div className="p-5 border-b flex justify-between items-center bg-slate-50">
+                                    <h2 className="text-xl font-black text-slate-800 flex items-center gap-2"><Icon name="sparkles" className="text-purple-600"/> AI 기출 이미지 자동 분석</h2>
+                                    <button onClick={() => setShowAIModal(false)} className="cursor-pointer text-slate-400 hover:text-slate-700 bg-white rounded-full p-1 border shadow-sm transition-colors"><Icon name="x" size={18}/></button>
+                                </div>
+                                
+                                <div className="p-6 overflow-y-auto flex-1 space-y-6">
+                                    <div className="bg-purple-50 p-4 rounded-xl border border-purple-100 flex justify-between items-center">
+                                        <div>
+                                            <h3 className="font-bold text-purple-900 text-sm mb-1">1. 분류코드 마스터 DB 연동</h3>
+                                            <p className="text-xs text-purple-700">현재 <strong className="text-purple-900 text-lg">{Object.keys(masterDB).length}</strong>개의 문항분류코드가 로드되어 있습니다.</p>
+                                        </div>
+                                        <label className="cursor-pointer bg-white text-purple-700 px-3 py-2 rounded-lg text-xs font-bold border border-purple-200 hover:bg-purple-100 shadow-sm transition-colors">
+                                            전체 분류코드 CSV 업로드
+                                            <input type="file" accept=".csv" className="hidden" onChange={handleMasterDBUpload} />
+                                        </label>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-500 mb-1.5">시험 시기 (필수입력)</label>
+                                            <input type="text" placeholder="예: 중2-1 기말" value={aiPeriodInput} onChange={e => setAiPeriodInput(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 focus:outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-400" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-500 mb-1.5">학교명 (선택)</label>
+                                            <input type="text" placeholder="예: 신곡중" value={aiSchoolInput} onChange={e => setAiSchoolInput(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 focus:outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-400" />
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 mb-1.5">2. 시험지 문항 이미지 첨부</label>
+                                        <label className="w-full border-2 border-dashed border-slate-300 rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-50 hover:border-purple-300 transition-all">
+                                            <Icon name="image-plus" size={32} className="text-slate-400 mb-2"/>
+                                            <span className="font-bold text-sm text-slate-600">클릭하여 문항 분류코드(MS~)가 포함된 이미지를 선택하세요</span>
+                                            <input type="file" accept="image/*" multiple className="hidden" onChange={handleAIImageSelection} />
+                                        </label>
+
+                                        {selectedImages.length > 0 && (
+                                            <div className="mt-4 flex gap-2 overflow-x-auto pb-2">
+                                                {selectedImages.map((img, i) => (
+                                                    <div key={i} className="relative shrink-0 w-20 h-20 rounded-lg overflow-hidden border border-slate-200 shadow-sm group">
+                                                        <img src={img.base64} className="w-full h-full object-cover" />
+                                                        <button onClick={() => setSelectedImages(p => p.filter((_, idx) => idx !== i))} className="cursor-pointer absolute top-1 right-1 bg-red-500/80 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"><Icon name="x" size={12}/></button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                                
+                                <div className="p-5 border-t bg-slate-50 flex justify-between items-center rounded-b-2xl">
+                                    <span className="text-xs text-slate-500 font-bold">이미지의 문항 번호, 코드, 배점을 AI가 읽어들입니다.</span>
+                                    <button onClick={processAIAnalysis} disabled={aiLoading || Object.keys(masterDB).length === 0 || selectedImages.length === 0 || !aiPeriodInput} className="cursor-pointer bg-purple-600 text-white px-6 py-2.5 rounded-lg text-sm font-bold shadow-md hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
+                                        {aiLoading ? <Icon name="loader-2" size={16} className="animate-spin-slow" /> : <Icon name="wand-2" size={16}/>}
+                                        {aiLoading ? '인공지능 분석 중...' : '자동 분석 시작'}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {confirmModal.show && (
                         <div className="fixed inset-0 bg-slate-900/40 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm">
                             <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full animate-in zoom-in-95">
@@ -1389,11 +1674,17 @@
                         <div className="fixed inset-0 bg-slate-900/60 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm no-print">
                             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl h-[90vh] flex flex-col animate-in fade-in zoom-in duration-200">
                                 <div className="p-4 border-b flex justify-between items-center bg-slate-50 rounded-t-2xl">
-                                    <h2 className="text-lg font-black text-slate-800 flex items-center gap-2"><Icon name="file-text" className="text-orange-600"/> 시험지 원문 뷰어</h2>
-                                    <button onClick={() => setPdfModal({ show: false, url: '' })} className="text-slate-400 hover:text-slate-700 bg-white rounded-full p-1 border shadow-sm transition-colors"><Icon name="x" size={18}/></button>
+                                    <h2 className="text-lg font-black text-slate-800 flex items-center gap-2">
+                                        <Icon name={pdfModal.isImage ? "image" : "file-text"} className="text-orange-600"/> 원문 뷰어
+                                    </h2>
+                                    <button onClick={() => setPdfModal({ show: false, url: '', isImage: false })} className="text-slate-400 hover:text-slate-700 bg-white rounded-full p-1 border shadow-sm transition-colors"><Icon name="x" size={18}/></button>
                                 </div>
-                                <div className="flex-1 w-full bg-slate-200 rounded-b-2xl overflow-hidden p-2">
-                                    <iframe src={pdfModal.url} className="w-full h-full rounded-xl border border-slate-300 bg-white" title="PDF Viewer"></iframe>
+                                <div className="flex-1 w-full bg-slate-200 rounded-b-2xl overflow-hidden p-2 flex items-center justify-center">
+                                    {pdfModal.isImage ? (
+                                        <img src={pdfModal.url} className="max-w-full max-h-full object-contain rounded-xl shadow-sm" alt="원문 이미지" />
+                                    ) : (
+                                        <iframe src={pdfModal.url} className="w-full h-full rounded-xl border border-slate-300 bg-white" title="PDF Viewer"></iframe>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -1420,8 +1711,8 @@
                                 </select>
                                 
                                 <div className="flex bg-slate-200 p-0.5 rounded ml-3">
-                                    <button onClick={() => setViewMode('student')} className={`px-3 py-1 rounded text-xs transition-colors ${viewMode==='student'?'bg-white shadow text-indigo-600':'text-slate-500'}`}>개별 성취도</button>
-                                    <button onClick={() => setViewMode('exam')} className={`px-3 py-1 rounded text-xs transition-colors ${viewMode==='exam'?'bg-white shadow text-orange-600':'text-slate-500'}`}>기출 분석</button>
+                                    <button onClick={() => setViewMode('student')} className={`cursor-pointer px-3 py-1 rounded text-xs transition-colors ${viewMode==='student'?'bg-white shadow text-indigo-600':'text-slate-500'}`}>개별 성취도</button>
+                                    <button onClick={() => setViewMode('exam')} className={`cursor-pointer px-3 py-1 rounded text-xs transition-colors ${viewMode==='exam'?'bg-white shadow text-orange-600':'text-slate-500'}`}>기출 분석</button>
                                 </div>
 
                                 {viewMode === 'student' && (
@@ -1435,15 +1726,19 @@
                         </div>
 
                         <div className="flex items-center gap-2 z-50">
-                            {examPdfUrl && (
-                                <button onClick={() => setPdfModal({ show: true, url: examPdfUrl })} className="cursor-pointer bg-orange-50 text-orange-700 px-3 py-2 rounded-lg text-sm font-bold border border-orange-200 hover:bg-orange-100 transition-colors flex items-center gap-1.5 shadow-sm mr-2" title="업로드된 시험지(PDF) 원문 띄우기">
-                                    <Icon name="file-text" size={16}/> 시험지 보기
+                            {examMedia && (
+                                <button onClick={() => setPdfModal({ show: true, url: examMedia.url, isImage: examMedia.isImage })} className="cursor-pointer bg-orange-50 text-orange-700 px-3 py-2 rounded-lg text-sm font-bold border border-orange-200 hover:bg-orange-100 transition-colors flex items-center gap-1.5 shadow-sm mr-2" title="업로드된 원문 띄우기">
+                                    <Icon name={examMedia.isImage ? "image" : "file-text"} size={16}/> 원문 보기
                                 </button>
                             )}
+                            
+                            <button onClick={() => setShowAIModal(true)} className="cursor-pointer bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-1.5 shadow-md transition-colors mr-2">
+                                <Icon name="sparkles" size={16}/> AI 기출 분석
+                            </button>
 
-                            <label className="cursor-pointer bg-slate-100 px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-1.5 border hover:bg-slate-200 transition-colors" title="분석 엑셀, 학생 CSV, 시험지 PDF 파일을 함께 업로드하세요.">
+                            <label className="cursor-pointer bg-slate-100 px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-1.5 border hover:bg-slate-200 transition-colors" title="분석 엑셀, 학생 CSV, 시험지 PDF, 이미지 파일을 함께 업로드하세요.">
                                 <Icon name="file-up" size={16}/> 데이터 업로드
-                                <input type="file" accept=".xlsx, .xls, .csv, .tsv, .pdf" multiple className="hidden" onClick={(e) => (e.target.value = '')} onChange={handleFileUpload} />
+                                <input type="file" accept=".xlsx, .xls, .csv, .tsv, .pdf, image/*" multiple className="hidden" onClick={(e) => (e.target.value = '')} onChange={handleFileUpload} />
                             </label>
 
                             <button onClick={() => setShowDataModal(true)} className="cursor-pointer bg-slate-100 text-slate-700 px-3 py-2 rounded-lg text-sm font-bold border hover:bg-slate-200 transition-colors flex items-center gap-1.5 shadow-sm" title="데이터 개별/전체 삭제 관리">
@@ -1513,8 +1808,8 @@
                             <Icon name="cloud" size={64} className="mx-auto mb-4 opacity-20" />
                             <h2 className="text-xl font-black mb-2 uppercase tracking-tight text-slate-400">Database Ready</h2>
                             <p className="text-sm font-medium text-slate-400 leading-relaxed">
-                                우측 상단의 <strong>[데이터 업로드]</strong> 버튼을 눌러 파일을 올려주세요.<br/>
-                                <span className="opacity-70">✅ 분석용 엑셀/CSV 데이터와 <strong>시험지 원문(PDF)</strong>을 함께 올리시면 뷰어 기능을 사용할 수 있습니다.</span>
+                                상단의 <strong>[데이터 업로드]</strong> 또는 <strong>[AI 기출 분석]</strong> 버튼을 눌러 작업을 시작하세요.<br/>
+                                <span className="opacity-70">✅ 분석용 엑셀/CSV 데이터와 <strong>원문(PDF/이미지)</strong>을 함께 올리시면 뷰어 기능을 사용할 수 있습니다.</span>
                             </p>
                         </div>
                     )}
