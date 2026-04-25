@@ -102,7 +102,7 @@
             return c;
         };
 
-        // 🌟 강력한 순수 대단원 추출 엔진 (어떤 기호, 숫자, 공백이든 원천 차단) 🌟
+        // 🌟 대단원 순수 추출 (괄호 및 불순물 철벽 방어) 🌟
         const cleanMajorUnit = (str) => {
             if (!str) return '미분류';
             let s = String(str);
@@ -341,43 +341,14 @@
             }
 
             const kiceGuidelines = {
-                "유리수와 순환소수": "순환소수를 분수로 고치는 기계적 계산보다는 유리수와 순환소수의 관계를 깊이 있게 이해하는 데 중점을 두어야 합니다.",
-                "식의 계산": "지수법칙을 이해하고, 다항식의 사칙계산을 정확히 수행하는 능력이 필요합니다. 지나치게 복잡한 식보다는 기본 법칙의 정확한 적용을 연습하세요.",
-                "일차부등식": "부등식의 성질을 이해하고, 해를 수직선 위에 나타내는 시각적 접근이 필요합니다. 실생활 상황을 부등식으로 표현하는 연습을 권장합니다.",
-                "연립일차방정식": "미지수를 소거하는 원리를 파악하고, 대입법과 가감법 중 상황에 맞는 적절한 방법을 선택하여 식을 전개하는 능력이 요구됩니다.",
-                "일차함수와 그래프": "함수의 개념을 바탕으로 x절편, y절편, 기울기의 의미를 기하학적으로 파악하고 그래프를 능숙하게 그릴 수 있어야 합니다.",
-                "삼각형의 성질": "이등변삼각형과 직각삼각형, 내심과 외심의 성질을 단순 암기하지 말고, 논리적으로 정당화(증명)해보는 과정이 매우 중요합니다.",
-                "사각형의 성질": "여러 가지 사각형 사이의 포함 관계를 명확히 이해하고, 평행사변형이 되는 조건을 찾아내는 논리적 추론 능력이 필요합니다.",
-                "도형의 닮음": "닮음의 뜻과 성질을 이해하고, 삼각형의 닮음 조건을 활용하여 평면도형과 입체도형의 성질을 유추해 내는 공간 지각력이 요구됩니다.",
-                "피타고라스 정리": "피타고라스 정리가 성립함을 다양한 방법으로 직접 설명해보고, 이를 평면도형의 길이나 넓이를 구하는 데 활용하는 훈련이 필요합니다.",
-                "경우의 수": "일상생활의 다양한 상황에서 일어날 수 있는 경우의 수를 빠짐없이, 중복되지 않게 논리적으로 구하는 사고방식이 필요합니다.",
-                "확률": "확률의 기본 성질을 이해하고, 상대도수로서의 확률의 의미를 바탕으로 실생활의 불확실한 상황을 수학적으로 해석하는 능력이 요구됩니다.",
-                "제곱근과 실수": "무리수의 개념을 직관적으로 이해하고, 수직선 위에 무리수를 나타내어 실수 체계의 구조를 파악하는 것이 핵심입니다.",
-                "다항식의 곱셈과 인수분해": "전개와 인수분해가 역관계임을 이해해야 합니다. 곱셈 공식을 기계적으로 외우기보다 도형의 넓이 등을 이용해 직접 유도해 보는 과정이 필요합니다.",
-                "이차방정식의 풀이": "인수분해나 완전제곱식을 이용해 해를 구하는 원리를 정확히 이해해야 합니다. 평가원 지침에 따르면 근의 공식 유도 과정을 직접 써보는 것이 중요합니다.",
-                "이차방정식의 활용": "주어진 실생활 문제를 이차방정식으로 모델링하고, 구한 해가 문제 상황(길이, 시간 등 양수 조건)에 맞는지 확인하는 습관을 들여보세요.",
-                "이차함수의 그래프": "이차함수 식을 일반형에서 표준형으로 능숙하게 변형하여 꼭짓점과 축의 방정식을 찾고, 그래프의 평행이동과 대칭이동을 시각적으로 연결해야 합니다.",
-                "이차함수의 일반형": "일반형을 표준형으로 고치는 대수적 조작 능력이 요구됩니다. 그래프의 평행이동과 대칭이동을 통해 식의 형태가 어떻게 변하는지 비교해 보세요.",
-                "이차함수의 최댓값과 최솟값": "제한된 범위에서 이차함수 그래프의 개형을 그리고, 축의 위치에 따른 최댓값과 최솟값을 찾아내는 해석 능력이 필요합니다.",
-                "삼각비": "직각삼각형의 닮음을 이용하여 삼각비의 개념을 이해하고, 특수한 각(30, 45, 60도)의 삼각비 값을 기하학적으로 유도해보는 과정이 필수적입니다.",
-                "원의 성질": "현, 접선, 원주각의 성질을 관찰을 통해 발견하고, 이를 논리적으로 정당화하며 복잡하지 않은 도형 문제에 적용하는 연습이 요구됩니다.",
-                "대푯값과 산포도": "평균, 중앙값, 최빈값 등 대푯값의 특징을 구분하고, 자료의 분포 상태를 분산과 표준편차로 정확히 해석하는 통계적 사고력이 중요합니다.",
-                "접선의 방정식": "미분계수의 기하학적 의미(접선의 기울기)를 명확히 이해하고, 곡선 위의 점과 밖의 점 등 다양한 조건에서 접선의 방정식을 구하는 논리적 과정을 세밀하게 점검해야 합니다.",
-                "함수의 극한": "직관적인 그래프 해석을 통해 극한의 개념을 이해하고, 극한에 대한 기본 성질을 이용하여 함수의 극한값을 구하는 능력이 필요합니다."
+                "수와 연산": "실수의 체계와 성질을 명확히 이해하고, 빠르고 정확한 연산을 요구합니다.",
+                "문자와 식": "주어진 조건을 수식으로 정확히 표현하고, 다항식의 전개와 인수분해, 그리고 방정식 및 부등식을 논리적으로 해결하는 능력이 필요합니다.",
+                "함수": "함수의 정의를 바탕으로 그래프를 그리고, x절편, y절편, 기울기, 꼭짓점 등의 기하학적 의미를 파악하는 것이 중요합니다.",
+                "기하": "도형의 성질(합동, 닮음, 피타고라스 정리, 삼각비, 원 등)을 이용하여 보조선을 긋고 길이나 넓이를 구하는 공간 지각력이 요구됩니다.",
+                "확률과 통계": "경우의 수를 빠짐없이 구하고, 확률의 기본 성질 및 대푯값과 산포도의 의미를 바탕으로 실생활 상황을 해석하는 사고방식이 필요합니다."
             };
 
-            let matchedGuideline = "";
-            const cleanWeakUnit = primaryWeakUnit.replace(/\s+/g, '');
-            for (const key in kiceGuidelines) {
-                const cleanKey = key.replace(/\s+/g, '');
-                if (cleanWeakUnit.includes(cleanKey) || cleanKey.includes(cleanWeakUnit)) {
-                    matchedGuideline = kiceGuidelines[key]; break;
-                }
-            }
-
-            if (!matchedGuideline) {
-                matchedGuideline = primaryWeakUnit !== "-" ? `해당 단원([${primaryWeakUnit}])의 교과서 예제와 기본 개념을 다시 한번 꼼꼼히 점검해 주세요.` : "전반적인 수학 기본 개념을 탄탄히 다지는 것이 중요합니다.";
-            }
+            let matchedGuideline = kiceGuidelines[primaryWeakUnit] || "전반적인 수학 기본 개념을 탄탄히 다지는 것이 중요합니다.";
 
             let method = "";
             if (percentage >= 100) {
@@ -645,7 +616,6 @@
                 }
             };
 
-            // 🌟 파일명 기반 지능형 제목 생성 로직 🌟
             const formattedTitleElements = useMemo(() => {
                 const fileName = data.fileName || "";
                 let year = "";
@@ -772,7 +742,7 @@
                                                     )}
                                                     <div>
                                                         <p className="text-[11px] font-bold text-orange-500 mb-0.5">🧠 필요한 개념</p>
-                                                        <p className="text-[13px] text-slate-700 font-medium break-keep leading-tight">{q.concept || q.minorUnit}</p>
+                                                        <p className="text-[13px] text-slate-700 font-medium break-keep leading-tight">{q.aiConcept || q.concept || q.minorUnit}</p>
                                                     </div>
                                                     <div className="bg-orange-50 p-3 rounded-lg border border-orange-100 mt-2">
                                                         <p className="text-[11px] font-bold text-orange-600 mb-1">💡 단계별 해결 전략 (AI)</p>
@@ -811,7 +781,7 @@
                                                 <td className="py-2.5 px-3 text-center font-black text-slate-700 border-r">{q.qNum}</td>
                                                 <td className="py-2.5 px-3 text-center font-bold text-slate-600 border-r">{q.type}</td>
                                                 <td className="py-2.5 px-3 border-r">
-                                                    <div className="font-bold text-slate-800 break-keep" style={{maxWidth: '160px'}}>{q.concept || q.minorUnit}</div>
+                                                    <div className="font-bold text-slate-800 break-keep" style={{maxWidth: '160px'}}>{q.aiConcept || q.concept || q.minorUnit}</div>
                                                 </td>
                                                 <td className="py-2.5 px-3 text-center border-r">
                                                     <span className={`px-1.5 py-0.5 rounded font-bold whitespace-nowrap ${q.numericDifficulty >= 7 ? 'text-white bg-red-400 border border-red-500' : (q.numericDifficulty >= 5 ? 'text-red-800 bg-red-100 border border-red-200' : (q.numericDifficulty <= 2 ? 'text-yellow-800 bg-yellow-100 border border-yellow-200' : 'text-lime-800 bg-lime-100 border border-lime-200'))}`}>
@@ -1049,6 +1019,7 @@
                 })).sort((a,b) => b.count - a.count);
 
                 const diffLevels = { '1~2단계': 0, '3~4단계': 0, '5~6단계': 0, '7~8단계': 0 };
+                
                 const processedExams = targetExams.map(e => {
                     let level = 4;
                     const match = String(e.difficulty).match(/\d+/);
@@ -1076,10 +1047,19 @@
                         return "주어진 조건을 해석하고 수식으로 세워 논리적으로 풀이합니다.";
                     };
                     
-                    const aiShortStrategy = getMathStrategy((e.concept || e.minorUnit) + " " + e.majorUnit);
+                    const fallbackStrategy = getMathStrategy((e.concept || e.minorUnit) + " " + e.majorUnit);
                     const cleanMajor = cleanMajorUnit(e.majorUnit);
 
-                    return { ...e, numericDifficulty: level, aiShortStrategy, cleanMajor };
+                    // 🌟 AI가 추출해준 전략/포인트가 있으면 우선 적용하고, 없으면 빈칸이나 기본값 🌟
+                    return { 
+                        ...e, 
+                        numericDifficulty: level, 
+                        aiShortStrategy: e.aiStrategy || fallbackStrategy, 
+                        aiStrategy: e.aiStrategy || fallbackStrategy,
+                        aiPoint: e.aiPoint || "복합 개념 적용 및 계산의 복잡성",
+                        aiConcept: e.aiConcept || e.concept || e.minorUnit,
+                        cleanMajor 
+                    };
                 });
 
                 const diffLevelsList = [
@@ -1102,19 +1082,9 @@
                 const mainUnit = unitDistribution.length > 0 ? unitDistribution[0].name : '전체';
                 const trendComment = `이번 ${schoolName} ${targetPeriod} 시험은 총 ${targetExams.length}문항으로 구성되었으며, 주로 [${mainUnit}] 단원을 중심으로 출제되었습니다.\n특히 [${hardestUnit}] 단원에서 고난도 변별력 문항이 집중 배치되어 전반적인 체감 난이도를 상승시키는 요인으로 작용했습니다. 단순 개념 암기를 넘어 주어진 조건을 정확히 해석하고 복합적인 원리를 적용해야 하는 문항이 포함되어 있으므로, 취약 유형에 대한 심층적인 분석과 단계별 풀이 훈련이 요구됩니다.`;
 
+                // 🌟 하드코딩 덮어씌우기 버그 삭제 -> AI가 만든 결과 그대로 보존 🌟
                 const coreQuestions = [...processedExams].sort((a,b) => b.numericDifficulty - a.numericDifficulty).slice(0, 2).map(q => {
-                    let p = "복합 개념 적용 및 계산의 복잡성";
-                    let s = "[1단계] 문제 조건의 정확한 수식화\n[2단계] 숨겨진 조건 파악 및 대입\n[3단계] 오답 함정 피하기 및 검산";
-                    const checkStr = q.cleanMajor + " " + (q.concept || q.minorUnit);
-                    if(checkStr.includes('도형')||checkStr.includes('삼각')) {
-                        p = "보이지 않는 보조선을 그어 기하학적 성질 유추";
-                        s = "[1단계] 도형의 특징 파악 및 보조선 작도\n[2단계] 닮음비/합동 조건 활용\n[3단계] 미지수 계산 및 결론 도출";
-                    }
-                    if(checkStr.includes('함수')) {
-                        p = "그래프의 기하학적 의미와 대수적 식의 통합 해석";
-                        s = "[1단계] 주어진 식을 표준형/일반형으로 변환\n[2단계] 꼭짓점, 절편 등을 그래프에 표시\n[3단계] 제한 범위 내의 조건과 매칭";
-                    }
-                    return { ...q, aiPoint: p, aiStrategy: s };
+                    return { ...q }; 
                 });
 
                 const fileName = targetExams[0]?.fileName || (schoolName ? `${schoolName} ${targetPeriod}` : targetPeriod);
@@ -1328,13 +1298,13 @@
                         }
                     }
 
-                    // 마스터 DB 갱신 즉시 반영
+                    // 마스터 DB가 새로 등록/갱신되었다면 즉각 적용
                     if (isMasterDBUpdated) {
                         setMasterDB(currentMasterDB);
                         localStorage.setItem('math_master_codes_cache', JSON.stringify(currentMasterDB));
                     }
 
-                    // 3. AI 이미지 자동 분석 및 PDF 문제 풀이 전략 융합
+                    // 2. 이미지 파일 자동 AI 분석 처리 및 PDF 연동
                     if (imageFiles.length > 0) {
                         let pdfBase64 = null;
                         if (pdfFile) {
@@ -1343,7 +1313,10 @@
                             addedMediaCount++;
                             pdfBase64 = await new Promise((resolve) => {
                                 const reader = new FileReader();
-                                reader.onload = (e) => resolve(e.target.result.split(',')[1]);
+                                reader.onload = (e) => {
+                                    const result = e.target.result;
+                                    resolve(result.includes(',') ? result.split(',')[1] : result);
+                                };
                                 reader.readAsDataURL(pdfFile);
                             });
                         } else {
@@ -1353,16 +1326,14 @@
                         }
 
                         const apiKey = "";
-                        // 🌟 프롬프트의 문자열 결합 방식으로 줄바꿈 오류 완벽 차단 🌟
-                        const promptText = "첨부된 이미지(분석표)와 PDF(원문)를 분석하세요. " +
-                                           "1. 이미지에서 문항의 '문제 번호(qNum)', '문항분류코드(code)', '배점(score)', '난이도(difficulty)'를 추출하세요. " +
-                                           "2. 첨부된 시험지 PDF에서 각 문항의 실제 문제 내용을 직접 파악하세요. " +
-                                           "3. 파악한 실제 문제를 푸는 데 필요한 핵심 포인트(aiPoint)와 구체적인 2~3단계 맞춤형 풀이 전략(aiStrategy)을 작성하세요. " +
-                                           "결과는 마크다운 블록 없이 순수 JSON 배열로만 반환하세요: [{\"qNum\": 1, \"code\": \"MS1310040217\", \"score\": 5, \"difficulty\": 4, \"aiPoint\": \"핵심\", \"aiStrategy\": \"전략\"}]";
-                        
+                        // 🌟 프롬프트의 문자열 결합 방식으로 줄바꿈 오류 완벽 차단 및 PDF 풀이 전략 요청 🌟
+                        const promptText = "첨부된 문항분석표 이미지와 시험지 PDF 원문을 분석하여 JSON 배열로 반환하세요. " + 
+                                           "1. 이미지에서 '문제 번호(qNum)', '문항분류코드(code, 기호 상관없이 추출)', '배점(score)', '난이도(difficulty, 1~8)'를 추출하세요. " + 
+                                           "2. 시험지 PDF의 실제 문제 내용을 직접 파악하여 해당 문제를 풀기 위한 '어려운 포인트(aiPoint)', '필요 개념(aiConcept)', '단계별 해결 전략(aiStrategy)'을 구체적으로 작성하세요. " + 
+                                           "마크다운이나 다른 텍스트 없이 순수 JSON 배열만 반환하세요. " + 
+                                           "예시: [{\"qNum\": 1, \"code\": \"MS130101\", \"score\": 5, \"difficulty\": 4, \"aiPoint\": \"어려운 포인트 내용\", \"aiConcept\": \"필요 개념 내용\", \"aiStrategy\": \"[1단계] ... [2단계] ...\"}]";
                         const parts = [ { text: promptText } ];
 
-                        // 이미지 파일 파츠 추가
                         for(const file of imageFiles) {
                             const base64 = await new Promise((resolve) => {
                                 const reader = new FileReader();
@@ -1372,8 +1343,7 @@
                             parts.push({ inlineData: { mimeType: file.type, data: base64 } });
                         }
 
-                        // PDF 파일 파츠 추가
-                        if (pdfFile && pdfBase64) {
+                        if (pdfBase64) {
                             parts.push({ inlineData: { mimeType: "application/pdf", data: pdfBase64 } });
                         }
 
@@ -1402,11 +1372,10 @@
 
                         if(data && data.candidates && data.candidates[0].content) {
                             let text = data.candidates[0].content.parts[0].text;
-                            // 마크다운 블록 오류 완벽 방지
-                            text = text.replace(/```json/gi, '').replace(/```/gi, '').trim();
+                            text = text.replace(/```json/gi, '').replace(/```/gi, '').trim(); 
                             
                             let jsonResult = [];
-                            try { jsonResult = JSON.parse(text); } catch(e) { console.error("JSON 파싱 실패", text); }
+                            try { jsonResult = JSON.parse(text); } catch(e) { console.error("JSON 파싱 에러"); }
 
                             const imgFileName = imageFiles[0].name.replace(/\.[^/.]+$/, "").trim();
                             const parsedPeriod = parsePeriodString(imgFileName, '', imageFiles[0].name) || "미분류 시험";
@@ -1414,8 +1383,8 @@
                             const schoolMatch = imgFileName.match(/[가-힣a-zA-Z0-9]+(?:중|고|여중|남중|여고|남고|중학교|고등학교)/);
                             if (schoolMatch) schoolStr = schoolMatch[0];
                             else if (imgFileName.includes("신곡")) schoolStr = "신곡중";
-                            else if (imgFileName.includes("남천")) schoolStr = "남천중";
                             else if (imgFileName.includes("해강")) schoolStr = "해강중";
+                            else if (imgFileName.includes("남천")) schoolStr = "남천중";
 
                             const newExamsFromImg = jsonResult.map(res => {
                                 const rawCode = res.code ? String(res.code) : '';
@@ -1436,7 +1405,8 @@
                                     score: res.score || 5,
                                     fileName: imgFileName,
                                     aiStrategy: res.aiStrategy || "", 
-                                    aiPoint: res.aiPoint || ""
+                                    aiPoint: res.aiPoint || "",
+                                    aiConcept: res.aiConcept || ""
                                 };
                             }).filter(e => e.qNum > 0);
 
@@ -1444,7 +1414,7 @@
                         }
                     }
 
-                    // 🌟 4. 통합 저장 및 화면 자동 전환 🌟
+                    // 🌟 3. 통합 저장 및 화면 자동 전환 🌟
                     const currentTotalExams = [...exams, ...addedExams];
                     const fallbackPeriod = currentTotalExams.length > 0 ? currentTotalExams[0].period : '';
 
@@ -1476,7 +1446,7 @@
                             semester: latestPeriod.split(' ')[0] || latestPeriod,
                             examType: latestPeriod.split(' ').slice(1).join(' ') || ''
                         }));
-                        setViewMode('exam'); // 기출 분석 화면 즉시 전환
+                        setViewMode('exam'); 
                     }
 
                     if (addedStudents.length > 0) {
@@ -1488,11 +1458,11 @@
                     }
 
                     let msg = [];
-                    if (isMasterDBUpdated) msg.push(`마스터DB 저장`);
-                    if (addedExams.length > 0) msg.push(`기출 ${addedExams.length}문항 분석`);
+                    if (isMasterDBUpdated) msg.push(`마스터DB 업데이트`);
+                    if (addedExams.length > 0) msg.push(`기출 ${addedExams.length}문항 분석완료`);
                     if (addedStudents.length > 0) msg.push(`학생 ${addedStudents.length}명 추가`);
 
-                    if (msg.length > 0) showToast(`✅ 데이터 통합 자동 분석 완료! (${msg.join(', ')})`, 'success');
+                    if (msg.length > 0) showToast(`✅ 데이터 통합 분석 성공! (${msg.join(', ')})`, 'success');
                     else showToast(`❌ 처리된 데이터가 없습니다.`, 'error');
 
                 } catch(error) {
@@ -1694,9 +1664,10 @@
                                 </button>
                             )}
 
+                            {/* 🌟 궁극의 원클릭 데이터 통합 업로드 버튼 🌟 */}
                             <label className="cursor-pointer bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-1.5 border hover:bg-indigo-700 transition-colors shadow-md" title="클릭하여 데이터(마스터DB, 엑셀, 이미지, PDF 등)를 한 번에 업로드하세요.">
                                 {isGenerating ? <Icon name="loader-2" size={16} className="animate-spin-slow" /> : <Icon name="file-up" size={16} />}
-                                {isGenerating ? '데이터 분석 중...' : '데이터 통합 업로드'}
+                                {isGenerating ? 'AI 분석 중...' : '데이터 통합 업로드'}
                                 <input type="file" accept=".xlsx, .xls, .csv, .tsv, .pdf, image/*" multiple className="hidden" onClick={(e) => (e.target.value = '')} onChange={handleFileUpload} />
                             </label>
 
