@@ -103,9 +103,9 @@
         const normalizeCode = (code) => {
             if (!code) return '';
             let c = String(code).trim().toUpperCase();
-            c = c.replace(/[\-\s_]/g, ''); // 하이픈, 공백, 언더바 완벽 제거
+            c = c.replace(/[\-\s_]/g, ''); 
             if (c.startsWith('MS0')) {
-                c = 'MS' + c.substring(3); // MS03 -> MS3 변환하여 호환성 확보
+                c = 'MS' + c.substring(3); 
             }
             return c;
         };
@@ -114,16 +114,10 @@
         const cleanMajorUnit = (str) => {
             if (!str) return '미분류';
             let s = String(str);
-            
-            // 1. 괄호와 그 안의 내용 모두 날리기
             s = s.replace(/[\(\[\{<].*?[\)\]\}>]/g, '');
-            
-            // 2. 숫자, 특수문자 날리기
             s = s.replace(/[0-9\-\:\>_]/g, '');
-            
             s = s.trim();
 
-            // 3. 교과 과정 대단원 키워드로 강력하게 묶기 (차트 렌더링 최적화)
             if (s.includes('수와 연산') || s.includes('유리수') || s.includes('소수') || s.includes('제곱근') || s.includes('실수') || s.includes('소인수분해') || s.includes('정수')) return '수와 연산';
             if (s.includes('문자와 식') || s.includes('방정식') || s.includes('부등식') || s.includes('다항식') || s.includes('인수분해') || s.includes('이차방정식') || s.includes('일차방정식')) return '문자와 식';
             if (s.includes('함수') || s.includes('이차함수') || s.includes('일차함수') || s.includes('그래프')) return '함수';
@@ -131,6 +125,53 @@
             if (s.includes('확률') || s.includes('통계') || s.includes('경우의 수') || s.includes('대푯값') || s.includes('산포도') || s.includes('자료의정리')) return '확률과 통계';
             
             return s || '기타 단원';
+        };
+
+        // 🌟 지능형 시험 정보 파싱 엔진 (연도, 학교, 학기, 중간/기말 완벽 분리) 🌟
+        const parseExamInfo = (strToParse) => {
+            let str = String(strToParse || '').trim();
+            str = str.replace(/_유형분석|유형분석|_학생답안|학생답안/g, '').trim();
+
+            let year = "미상";
+            const yearMatch = str.match(/(24|25|26|27|28|29|30)/);
+            if (yearMatch) year = yearMatch[0] + "년";
+
+            let school = "학교미상";
+            const schoolMatch = str.match(/[가-힣]{2,4}(?:중|고)/);
+            if (schoolMatch) school = schoolMatch[0];
+            else if (str.includes("신곡")) school = "신곡중";
+            else if (str.includes("해강")) school = "해강중";
+            else if (str.includes("남천")) school = "남천중";
+
+            let semester = "과정미상";
+            if (str.match(/1-1|1학년\s*1학기/)) semester = "1-1";
+            else if (str.match(/1-2|1학년\s*2학기/)) semester = "1-2";
+            else if (str.match(/2-1|2학년\s*1학기/)) semester = "2-1";
+            else if (str.match(/2-2|2학년\s*2학기/)) semester = "2-2";
+            else if (str.match(/3-1|3학년\s*1학기/)) semester = "3-1";
+            else if (str.match(/3-2|3학년\s*2학기/)) semester = "3-2";
+            else if (str.match(/공통수학1/)) semester = "공통수학1";
+            else if (str.match(/공통수학2/)) semester = "공통수학2";
+            else if (str.match(/수학\s*\(?상\)?|수학상/)) semester = "수학(상)";
+            else if (str.match(/수학\s*\(?하\)?|수학하/)) semester = "수학(하)";
+
+            let exam = "시험미상";
+            if (str.includes("중간")) exam = "중간";
+            else if (str.includes("기말")) exam = "기말";
+
+            const parts = [];
+            if (school !== "학교미상") parts.push(school);
+            if (semester !== "과정미상") parts.push(semester);
+            if (exam !== "시험미상") parts.push(exam);
+
+            let schoolExamDisplay = parts.join(' ');
+            if (!schoolExamDisplay) {
+                schoolExamDisplay = str.replace(/^[0-9\s]+/, "").trim() || "분석 시험";
+            }
+            
+            const fullMatchKey = `${year}_${school}_${semester}_${exam}_${schoolExamDisplay}`;
+            
+            return { year, school, semester, exam, schoolExamDisplay, fullMatchKey };
         };
 
         // 🌟 텍스트 내의 수식(LaTeX)을 아름답게 렌더링 해주는 컴포넌트 🌟
@@ -162,82 +203,6 @@
                     ))}
                 </div>
             );
-        };
-
-        // --- 초정밀 시험 기간 문자열 분석기 ---
-        const parsePeriodString = (rawStr, rawGradeStr = '', fileName = '') => {
-            const parseLogic = (str, gradeStr) => {
-                if (!str) return '';
-                let s = String(str).trim();
-                
-                if (s.includes('_')) s = s.substring(s.indexOf('_') + 1);
-                s = s.replace(/[\(\[][가-힣a-zA-Z0-9\s]+(?:중|고|여중|남중|여고|남고|중학교|고등학교)[\)\]]/g, ''); 
-                
-                const doubleBracketMatch = s.match(/\[(.*?)\]\s*\[(.*?)\]/);
-                if (doubleBracketMatch) {
-                    let sem = doubleBracketMatch[1].replace(/성취도\s*평가|테스트/g, '').replace(/\s+/g, '').replace(/^[중고](?=\d-\d)/, '');
-                    let exam = doubleBracketMatch[2].trim().replace(/고사$/, '');
-                    if (!sem) {
-                       let sMatch = s.match(/(\d)\s*-\s*(\d)/);
-                       if (sMatch) sem = `${sMatch[1]}-${sMatch[2]}`;
-                    }
-                    if (sem && exam) return `${sem} ${exam}`;
-                }
-                
-                const parenMatch = s.match(/(.*?)(?:성취도\s*평가|테스트)?\s*[\(\[](.+?)[\)\]]/);
-                if (parenMatch) {
-                    let sem = parenMatch[1].replace(/성취도\s*평가|테스트/g, '').replace(/\s+/g, '').replace(/^[중고](?=\d-\d)/, '');
-                    let exam = parenMatch[2].trim().replace(/고사$/, '');
-                    if (!sem) {
-                       let sMatch = s.match(/(\d)\s*-\s*(\d)/);
-                       if (sMatch) sem = `${sMatch[1]}-${sMatch[2]}`;
-                    }
-                    if (sem && exam) return `${sem} ${exam}`;
-                }
-                
-                s = s.replace(/성취도\s*평가|테스트/g, '');
-                let semester = '';
-                let sMatch = s.match(/(\d)\s*-\s*(\d)/) || String(gradeStr).match(/(\d)\s*-\s*(\d)/);
-                
-                if (sMatch) {
-                    semester = `${sMatch[1]}-${sMatch[2]}`;
-                } else if (s.includes('공통수학') || String(gradeStr).includes('공통수학')) {
-                    let m = s.match(/공통수학\s*([12])/) || String(gradeStr).match(/공통수학\s*([12])/);
-                    semester = m ? `공통수학${m[1]}` : '공통수학';
-                } else {
-                    let strForGrade = s.replace(/20\d{2}/g, '');
-                    let gradeMatchStr = String(gradeStr) ? String(gradeStr) : strForGrade;
-                    let gMatch = gradeMatchStr.match(/(?:중|고)?\s*([1-6])/);
-                    let tMatch = s.match(/(\d)\s*학기/);
-                    if (gMatch && tMatch) {
-                        semester = `${gMatch[1]}-${tMatch[1]}`;
-                    }
-                }
-                
-                let exam = '';
-                if (s.includes('중간')) exam = '중간';
-                else if (s.includes('기말')) exam = '기말';
-                
-                if (semester && exam) return `${semester} ${exam}`;
-                if (semester) return semester;
-                return String(str).trim();
-            };
-
-            if (fileName) {
-                const baseName = fileName.split('.')[0].trim();
-                const fileResult = parseLogic(baseName, '');
-                if (fileResult && fileResult.includes(' ')) return fileResult;
-            }
-            
-            let result = parseLogic(rawStr, rawGradeStr);
-            
-            if ((!result || result.length < 2 || !result.includes(' ')) && fileName) {
-                const baseName = fileName.split('.')[0].trim();
-                const fbResult = parseLogic(baseName, '');
-                if (fbResult && fbResult.includes(' ')) { result = fbResult; }
-            }
-            
-            return result;
         };
 
         const encodeReportData = (analysisData, studentName) => {
@@ -507,7 +472,7 @@
         const DetailRowItem = ({ r }) => {
             const qNum = r.q !== undefined ? r.q : r.qNum;
             const rawMajor = r.m !== undefined ? r.m : r.majorUnit;
-            const cleanMajor = cleanMajorUnit(rawMajor);
+            const cleanMajor = cleanMajorUnit(rawMajor); // 🌟 무조건 순수 대단원
             
             const minor = r.i !== undefined ? r.i : r.minorUnit;
             const type = r.t !== undefined ? r.t : r.type;
@@ -560,7 +525,7 @@
                             <div className="absolute opacity-10 -right-6 -top-6"><Icon name="award" size={150} /></div>
                             <p className="text-indigo-200 font-bold text-xs tracking-widest mb-1 relative z-10 uppercase">Math Report</p>
                             <div className="flex flex-col items-center justify-center relative z-10 mb-6 gap-1">
-                                <h1 className="text-2xl font-black text-center">{data.period} 수학 성취도</h1>
+                                <h1 className="text-2xl font-black text-center">{data.targetPeriod} 수학 성취도</h1>
                                 {data.schoolName && (
                                     <span className="text-sm font-bold text-indigo-200 bg-indigo-800/50 px-3 py-0.5 rounded-full">{data.schoolName}</span>
                                 )}
@@ -640,6 +605,7 @@
             );
         };
 
+        // --- 📊 기출 분석 전용 뷰 컴포넌트 ---
         const ExamAnalysisView = ({ data }) => {
             const [questionImages, setQuestionImages] = useState({});
 
@@ -655,32 +621,7 @@
             };
 
             const formattedTitleElements = useMemo(() => {
-                const fileName = data.fileName || "";
-                let year = "";
-                let school = "";
-                let semester = "";
-                let exam = "";
-
-                const yearMatch = fileName.match(/(24|25|26|27|28|29|30)/);
-                if (yearMatch) year = yearMatch[0] + "년";
-
-                const schoolMatch = fileName.match(/[가-힣]{2,4}(?:중|고)/);
-                if (schoolMatch) school = schoolMatch[0];
-                else if (fileName.includes("신곡")) school = "신곡중";
-                else if (fileName.includes("남천")) school = "남천중";
-                else if (fileName.includes("해강")) school = "해강중";
-
-                if (fileName.match(/1-1|1학년\s*1학기/)) semester = "1-1";
-                else if (fileName.match(/1-2|1학년\s*2학기/)) semester = "1-2";
-                else if (fileName.match(/2-1|2학년\s*1학기/)) semester = "2-1";
-                else if (fileName.match(/2-2|2학년\s*2학기/)) semester = "2-2";
-                else if (fileName.match(/3-1|3학년\s*1학기/)) semester = "3-1";
-                else if (fileName.match(/3-2|3학년\s*2학기/)) semester = "3-2";
-
-                if (fileName.includes("중간")) exam = "중간고사";
-                else if (fileName.includes("기말")) exam = "기말고사";
-
-                const parts = [year, school, semester, exam].filter(Boolean);
+                const parts = [data.year !== "미상" ? data.year : "", data.schoolExamDisplay].filter(Boolean);
                 if (parts.length > 0) {
                     return (
                         <h1 className="text-[26px] font-black text-slate-900 leading-tight break-keep">
@@ -691,10 +632,10 @@
 
                 return (
                     <h1 className="text-[26px] font-black text-slate-900 leading-tight break-keep">
-                        <span className="text-orange-600 mr-2">{fileName}</span>분석
+                        <span className="text-orange-600 mr-2">{data.fileName}</span>분석
                     </h1>
                 );
-            }, [data.fileName]);
+            }, [data]);
 
             if (!data) return <div className="p-8 text-center h-screen flex items-center justify-center font-bold text-slate-500">기출 데이터를 불러올 수 없습니다. 시험을 먼저 선택해주세요.</div>;
 
@@ -718,6 +659,7 @@
                                 <div>
                                     <h3 className="text-sm font-bold text-slate-500 mb-2 flex items-center gap-1"><Icon name="book-open" size={16}/> 시험 범위</h3>
                                     <div className="flex flex-wrap gap-2">
+                                        {/* 🌟 시험범위 무조건 순수 대단원만 나오게 됨 */}
                                         {data.scopes.map((scope, idx) => (
                                             <span key={idx} className="bg-white border border-slate-200 text-slate-700 px-3 py-1.5 rounded-lg text-[13px] font-bold shadow-sm">{scope}</span>
                                         ))}
@@ -859,7 +801,15 @@
             const [students, setStudents] = useState(() => JSON.parse(localStorage.getItem('math_students_cache') || '[]'));
             const [examMedia, setExamMedia] = useState(null); 
             
-            const [filters, setFilters] = useState({ semester: '', examType: '', studentName: '' });
+            // 🌟 뷰 모드별 최적화된 상태 분리 (마이그레이션 반영) 🌟
+            const [filters, setFilters] = useState({ 
+                studentCourse: '', 
+                studentExam: '', 
+                studentName: '',
+                examYear: '',
+                examSchoolExam: ''
+            });
+
             const [showDataModal, setShowDataModal] = useState(false);
 
             const showToast = (message, type = 'info') => {
@@ -869,6 +819,7 @@
 
             const requestConfirm = (message, onConfirm) => { setConfirmModal({ show: true, message, onConfirm }); };
 
+            // 🌟 실시간 데이터 로드 및 마이그레이션 (DB에 꼬인 과거 데이터 자동 포맷 변환) 🌟
             useEffect(() => {
                 const initFirebase = async () => {
                     try {
@@ -878,16 +829,36 @@
                         
                         auth.onAuthStateChanged((u) => {
                             if (u) {
+                                db.collection('artifacts').doc(appId).collection('public').doc('data').collection('settings').doc('masterDB')
+                                  .get().then(doc => {
+                                      if (doc.exists && doc.data().compressed) {
+                                          const decompressed = window.LZString.decompressFromUTF16(doc.data().compressed);
+                                          if (decompressed) {
+                                              const data = JSON.parse(decompressed);
+                                              setMasterDB(data);
+                                              localStorage.setItem('math_master_codes_cache', JSON.stringify(data));
+                                          }
+                                      }
+                                  }).catch(e => console.warn("Master DB 연동 실패:", e));
+
                                 const examsRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('exams');
                                 const studentsRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('students');
 
                                 examsRef.onSnapshot(snap => {
-                                    const data = snap.docs.map(d => d.data());
+                                    const data = snap.docs.map(d => {
+                                        const docData = d.data();
+                                        const parsed = parseExamInfo(docData.fileName || docData.period || docData.rawPeriod);
+                                        return { ...docData, ...parsed };
+                                    });
                                     setExams(data); localStorage.setItem('math_exams_cache', JSON.stringify(data));
                                 });
                                 
                                 studentsRef.onSnapshot(snap => {
-                                    const data = snap.docs.map(d => d.data());
+                                    const data = snap.docs.map(d => {
+                                        const docData = d.data();
+                                        const parsed = parseExamInfo(docData.period);
+                                        return { ...docData, ...parsed };
+                                    });
                                     setStudents(data); localStorage.setItem('math_students_cache', JSON.stringify(data));
                                 });
                             }
@@ -909,43 +880,47 @@
                 }
             }, [reportParam]);
 
+            // 🌟 뷰 모드별 드롭다운 옵션 자동 생성 엔진 🌟
             const optionsData = useMemo(() => {
-                const allPeriods = [...new Set(exams.map(e => e.period))]; 
-                const semesters = [...new Set(allPeriods.map(p => {
-                    const idx = p.indexOf(' '); return idx > -1 ? p.substring(0, idx) : p;
-                }))].filter(Boolean).sort();
-                
-                const examTypes = [...new Set(allPeriods
-                    .filter(p => filters.semester ? p.startsWith(filters.semester + ' ') : true)
-                    .map(p => {
-                        const idx = p.indexOf(' '); return idx > -1 ? p.substring(idx + 1) : '';
-                    })
-                )].filter(Boolean);
-                
-                const targetPeriod = `${filters.semester} ${filters.examType}`.trim();
-                const availableStudents = [...new Set(students.filter(s => s.period === targetPeriod).map(s => s.name))].sort();
+                const studentCourses = [...new Set(students.map(s => s.semester !== '과정미상' ? s.semester : s.schoolExamDisplay))].filter(Boolean).sort();
+                const studentExams = [...new Set(students.filter(s => (s.semester !== '과정미상' ? s.semester : s.schoolExamDisplay) === filters.studentCourse).map(s => s.exam !== '시험미상' ? s.exam : '기타'))].filter(Boolean);
+                const studentNames = [...new Set(students.filter(s => (s.semester !== '과정미상' ? s.semester : s.schoolExamDisplay) === filters.studentCourse && (s.exam !== '시험미상' ? s.exam : '기타') === filters.studentExam).map(s => s.name))].sort();
 
-                return { semesters, examTypes, students: availableStudents };
-            }, [exams, students, filters.semester, filters.examType]);
+                const examYears = [...new Set(exams.map(e => e.year))].filter(y => y && y !== "미상").sort();
+                const examSchoolExams = [...new Set(exams.filter(e => e.year === filters.examYear).map(e => e.schoolExamDisplay))].filter(Boolean).sort();
 
+                return { studentCourses, studentExams, studentNames, examYears, examSchoolExams };
+            }, [exams, students, filters.studentCourse, filters.studentExam, filters.examYear]);
+
+            // 자동 선택 로직
             useEffect(() => {
-                if (!filters.semester && optionsData.semesters.length > 0) setFilters(prev => ({ ...prev, semester: optionsData.semesters[0] }));
-            }, [optionsData.semesters]);
-
-            useEffect(() => {
-                if (optionsData.examTypes.length > 0 && (!filters.examType || !optionsData.examTypes.includes(filters.examType))) {
-                    setFilters(prev => ({ ...prev, examType: optionsData.examTypes[0], studentName: '' }));
+                if (viewMode === 'student') {
+                    if (!filters.studentCourse && optionsData.studentCourses.length > 0) {
+                        setFilters(p => ({ ...p, studentCourse: optionsData.studentCourses[0] }));
+                    } else if (optionsData.studentExams.length > 0 && (!filters.studentExam || !optionsData.studentExams.includes(filters.studentExam))) {
+                        setFilters(p => ({ ...p, studentExam: optionsData.studentExams[0], studentName: '' }));
+                    }
+                } else if (viewMode === 'exam') {
+                    if (!filters.examYear && optionsData.examYears.length > 0) {
+                        setFilters(p => ({ ...p, examYear: optionsData.examYears[optionsData.examYears.length - 1] }));
+                    } else if (optionsData.examSchoolExams.length > 0 && (!filters.examSchoolExam || !optionsData.examSchoolExams.includes(filters.examSchoolExam))) {
+                        setFilters(p => ({ ...p, examSchoolExam: optionsData.examSchoolExams[0] }));
+                    }
                 }
-            }, [optionsData.examTypes, filters.examType]);
+            }, [optionsData, viewMode]);
 
+            // 🌟 [개별 성취도] 분석 데이터 계산 🌟
             const analysisData = useMemo(() => {
-                if (viewMode !== 'student' || !filters.semester || !filters.examType || !filters.studentName) return null;
-                const targetPeriod = `${filters.semester} ${filters.examType}`;
+                if (viewMode !== 'student' || !filters.studentCourse || !filters.studentExam || !filters.studentName) return null;
                 
-                const targetExams = exams.filter(e => e.period === targetPeriod).sort((a,b) => a.qNum - b.qNum);
-                const targetStudent = students.find(s => s.name === filters.studentName && s.period === targetPeriod);
-                
-                if (targetExams.length === 0 || !targetStudent) return null;
+                const targetStudent = students.find(s => s.name === filters.studentName && 
+                    (s.semester !== "과정미상" ? s.semester : s.schoolExamDisplay) === filters.studentCourse && 
+                    (s.exam !== "시험미상" ? s.exam : "기타") === filters.studentExam);
+                    
+                if (!targetStudent) return null;
+
+                const targetExams = exams.filter(e => e.fullMatchKey === targetStudent.fullMatchKey).sort((a,b) => a.qNum - b.qNum);
+                if (targetExams.length === 0) return null;
 
                 let totalScoreCalc = 0;
                 const results = targetExams.map(ex => {
@@ -962,7 +937,6 @@
                         const ratio = studentAns.studentFull > 0 ? (studentAns.earned / studentAns.studentFull) : 0;
                         earnedScore = fullScore * ratio;
                         earnedScore = Math.round(earnedScore * 10) / 10; 
-                        
                         if (earnedScore >= fullScore && fullScore > 0) { earnedScore = fullScore; status = 'O'; } 
                         else if (earnedScore > 0) { status = '△'; } 
                         else { status = 'X'; }
@@ -1019,30 +993,19 @@
                     typeStats[t].total++; if(r.earnedScore > 0) typeStats[t].correct++;
                 });
 
-                let schoolName = targetExams[0]?.school || '';
-                const rawPeriod = targetExams[0]?.rawPeriod || ''; 
-                if (schoolName) {
-                    const yearMatch = String(rawPeriod).match(/20\d{2}/);
-                    if (yearMatch && !schoolName.includes('년')) schoolName = `${yearMatch[0]}년 ${schoolName}`;
-                }
+                const targetPeriodName = `${targetExams[0].year !== '미상' ? targetExams[0].year.replace('년','')+'년 ' : ''}${targetExams[0].schoolExamDisplay}`;
 
-                return { targetPeriod, results, totalScore, unitData, diffData, typeStats, schoolName };
+                return { targetPeriod: targetPeriodName, results, totalScore, unitData, diffData, typeStats, schoolName: targetExams[0]?.school || '' };
             }, [exams, students, filters, viewMode]);
 
+            // 🌟 [기출 분석] 분석 데이터 계산 🌟
             const examReportData = useMemo(() => {
-                if (viewMode !== 'exam' || !filters.semester || !filters.examType) return null;
-                const targetPeriod = `${filters.semester} ${filters.examType}`;
-                const targetExams = exams.filter(e => e.period === targetPeriod).sort((a,b) => a.qNum - b.qNum);
+                if (viewMode !== 'exam' || !filters.examYear || !filters.examSchoolExam) return null;
                 
+                const targetExams = exams.filter(e => e.year === filters.examYear && e.schoolExamDisplay === filters.examSchoolExam).sort((a,b) => a.qNum - b.qNum);
                 if (targetExams.length === 0) return null;
 
-                let schoolName = targetExams[0]?.school || '';
-                const rawPeriod = targetExams[0]?.rawPeriod || ''; 
-                if (schoolName) {
-                    const yearMatch = String(rawPeriod).match(/20\d{2}/);
-                    if (yearMatch && !schoolName.includes('년')) schoolName = `${yearMatch[0]}년 ${schoolName}`;
-                }
-                
+                const schoolName = targetExams[0]?.school || '';
                 const scopes = [...new Set(targetExams.map(e => cleanMajorUnit(e.majorUnit)))].filter(Boolean);
                 
                 const unitCounts = {};
@@ -1115,26 +1078,36 @@
                 }
                 
                 const mainUnit = unitDistribution.length > 0 ? unitDistribution[0].name : '전체';
-                const trendComment = `이번 ${schoolName} ${targetPeriod} 시험은 총 ${targetExams.length}문항으로 구성되었으며, 주로 [${mainUnit}] 단원을 중심으로 출제되었습니다.\n특히 [${hardestUnit}] 단원에서 고난도 변별력 문항이 집중 배치되어 전반적인 체감 난이도를 상승시키는 요인으로 작용했습니다. 단순 개념 암기를 넘어 주어진 조건을 정확히 해석하고 복합적인 원리를 적용해야 하는 문항이 포함되어 있으므로, 취약 유형에 대한 심층적인 분석과 단계별 풀이 훈련이 요구됩니다.`;
+                const trendComment = `이번 ${schoolName} ${filters.examSchoolExam} 시험은 총 ${targetExams.length}문항으로 구성되었으며, 주로 [${mainUnit}] 단원을 중심으로 출제되었습니다.\n특히 [${hardestUnit}] 단원에서 고난도 변별력 문항이 집중 배치되어 전반적인 체감 난이도를 상승시키는 요인으로 작용했습니다. 단순 개념 암기를 넘어 주어진 조건을 정확히 해석하고 복합적인 원리를 적용해야 하는 문항이 포함되어 있으므로, 취약 유형에 대한 심층적인 분석과 단계별 풀이 훈련이 요구됩니다.`;
 
                 const coreQuestions = [...processedExams].sort((a,b) => b.numericDifficulty - a.numericDifficulty).slice(0, 2).map(q => {
                     return { ...q }; 
                 });
 
-                const fileName = targetExams[0]?.fileName || (schoolName ? `${schoolName} ${targetPeriod}` : targetPeriod);
-
-                return { targetPeriod, schoolName, fileName, scopes, unitDistribution, diffLevelsList, targetExams: processedExams, trendComment, coreQuestions };
-            }, [exams, filters.semester, filters.examType, viewMode]);
+                return { 
+                    targetPeriod: `${filters.examYear} ${filters.examSchoolExam}`, 
+                    schoolName, 
+                    fileName: targetExams[0]?.fileName || filters.examSchoolExam, 
+                    year: targetExams[0]?.year,
+                    schoolExamDisplay: targetExams[0]?.schoolExamDisplay,
+                    scopes, 
+                    unitDistribution, 
+                    diffLevelsList, 
+                    targetExams: processedExams, 
+                    trendComment, 
+                    coreQuestions 
+                };
+            }, [exams, filters.examYear, filters.examSchoolExam, viewMode]);
 
             const comments = useMemo(() => generateAIComment(analysisData), [analysisData]);
 
-            // 🌟 단일 [데이터 업로드] 통합 핸들러 🌟
+            // 🌟 단일 [데이터 통합 업로드] 핸들러 (안정화 및 마이그레이션 적용) 🌟
             const handleFileUpload = async (e) => {
                 const files = Array.from(e.target.files);
                 if (files.length === 0) return;
 
                 setIsGenerating(true);
-                showToast("데이터를 처리 중입니다. PDF가 포함된 경우 약 10초 정도 소요됩니다...", "info");
+                showToast("데이터를 분석 중입니다. PDF 파일 크기에 따라 10~20초 소요됩니다...", "info");
 
                 let addedExams = [];
                 let addedStudents = [];
@@ -1147,7 +1120,7 @@
                 const otherFiles = files.filter(f => !f.type.startsWith('image/') && !f.name.toLowerCase().endsWith('.pdf'));
 
                 try {
-                    // 1. 일반 엑셀/CSV 및 PDF 처리
+                    // 1. 일반 엑셀/CSV 파일 먼저 처리
                     for (const file of otherFiles) {
                         if (file.name.toLowerCase().endsWith('.csv') || file.name.toLowerCase().endsWith('.tsv') || file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.xls')) {
                             await new Promise((resolve) => {
@@ -1171,6 +1144,7 @@
 
                                         if (aoa.length > 0) {
                                             const firstRowStr = aoa[0].join('').replace(/\s+/g, '');
+                                            // 🌟 마스터 DB (문항분류코드) 스캔 및 저장 🌟
                                             if (firstRowStr.includes('풀코드') || firstRowStr.includes('과목코드')) {
                                                 for(let i = 1; i < aoa.length; i++) {
                                                     const cols = aoa[i];
@@ -1188,6 +1162,7 @@
                                                 return resolve();
                                             }
 
+                                            // 🌟 일반 학생/기출 엑셀 스캔 🌟
                                             let headerIdx = -1;
                                             let fileType = 'UNKNOWN';
                                             for (let i = 0; i < Math.min(aoa.length, 15); i++) {
@@ -1203,6 +1178,8 @@
                                                     headerIdx = i; fileType = 'H_STUDENT'; break; 
                                                 }
                                             }
+
+                                            const cleanFileName = file.name.replace(/\.[^/.]+$/, "").replace(/_유형분석|유형분석|_학생답안|학생답안/g, '').trim();
 
                                             if (headerIdx > -1) {
                                                 const headers = aoa[headerIdx].map(h => String(h).trim().replace(/\s+/g, ''));
@@ -1225,15 +1202,9 @@
                                                         };
                                                         
                                                         const rawPeriod = getVal(['출제시기', '시기']); 
-                                                        const rawGrade = getVal(['학년']); 
-                                                        const parsedPeriod = parsePeriodString(rawPeriod, rawGrade, file.name);
                                                         const concept = getVal(['출제내용', '세부유형', '유형내용', '문항내용', '핵심개념']);
-                                                        
-                                                        let rawMajor = getVal(['대단원']);
-                                                        if(!rawMajor) rawMajor = getVal(['단원명', '단원', '영역'], ['소단원', '중단원', '세부']);
-                                                        
-                                                        let minorUnit = getVal(['중단원']);
-                                                        if(!minorUnit) minorUnit = getVal(['소단원', '세부']);
+                                                        let rawMajor = getVal(['대단원', '단원명', '단원', '영역'], ['소단원', '중단원', '세부']);
+                                                        let minorUnit = getVal(['중단원', '소단원', '세부']);
 
                                                         let schoolStr = getVal(['학교명', '학교']);
                                                         if (!schoolStr) {
@@ -1242,8 +1213,8 @@
                                                         }
                                                         
                                                         return {
-                                                            period: parsedPeriod,
-                                                            rawPeriod: rawPeriod,
+                                                            period: rawPeriod ? rawPeriod : cleanFileName,
+                                                            rawPeriod: rawPeriod ? rawPeriod : cleanFileName,
                                                             school: schoolStr,
                                                             qNum: parseInt(getVal(['문항번호', '번호', '문항', '순번', 'no', 'No'])) || 0,
                                                             type: getVal(['문항유형', '유형', '형태']),
@@ -1252,20 +1223,19 @@
                                                             minorUnit: minorUnit,
                                                             concept: concept,
                                                             score: parseFloat(getVal(['배점', '점수'])) || 0,
-                                                            fileName: file.name.split('.')[0].trim() 
+                                                            fileName: cleanFileName 
                                                         };
                                                     }).filter(e => e.qNum > 0);
                                                     addedExams.push(...parsedExams);
                                                 } 
                                                 else if (fileType === 'V_STUDENT') {
-                                                    const fileName = file.name.replace(/\.[^/.]+$/, "").trim();
                                                     let studentName = "학생";
-                                                    let finalPeriod = "";
-                                                    if (fileName.includes('_')) {
-                                                        studentName = fileName.split('_')[0].trim();
-                                                        finalPeriod = parsePeriodString(fileName.substring(fileName.indexOf('_') + 1), '', file.name);
+                                                    let finalPeriod = cleanFileName;
+                                                    if (cleanFileName.includes('_')) {
+                                                        studentName = cleanFileName.split('_')[0].trim();
+                                                        finalPeriod = cleanFileName.substring(cleanFileName.indexOf('_') + 1).trim();
                                                     } else {
-                                                        studentName = fileName;
+                                                        studentName = cleanFileName;
                                                     }
                                                     const responses = {};
                                                     cleanJson.forEach(row => {
@@ -1307,7 +1277,6 @@
                                                         const name = getVal(['이름', '학생', '성명']);
                                                         if (!name) return null;
                                                         const rawPeriod = getVal(['시험시기', '시기', '학년학기', '출제시기']); 
-                                                        let finalPeriod = parsePeriodString(rawPeriod, '', file.name);
                                                         const responses = {};
                                                         Object.keys(row).forEach(k => {
                                                             const qNumStr = String(k).replace(/[^0-9]/g, '');
@@ -1316,7 +1285,7 @@
                                                                 if (qNum > 0 && qNum <= 100) responses[qNum] = String(row[k]).trim().toUpperCase();
                                                             }
                                                         });
-                                                        return { name, period: finalPeriod, responses };
+                                                        return { name, period: rawPeriod || cleanFileName, responses };
                                                     }).filter(Boolean);
                                                     addedStudents.push(...parsedStudents);
                                                 }
@@ -1330,9 +1299,16 @@
                         }
                     }
 
+                    // 마스터 DB가 새로 등록/갱신되었다면 클라우드에 영구 저장
                     if (isMasterDBUpdated) {
                         setMasterDB(currentMasterDB);
                         localStorage.setItem('math_master_codes_cache', JSON.stringify(currentMasterDB));
+                        
+                        try {
+                            const compressed = window.LZString.compressToUTF16(JSON.stringify(currentMasterDB));
+                            db.collection('artifacts').doc(appId).collection('public').doc('data').collection('settings').doc('masterDB')
+                              .set({ compressed }).catch(e => console.warn(e));
+                        } catch (e) { console.error("Firestore Save Error", e); }
                     }
 
                     // 2. 이미지 파일 자동 AI 분석 처리 및 PDF 연동
@@ -1344,10 +1320,7 @@
                             addedMediaCount++;
                             pdfBase64 = await new Promise((resolve) => {
                                 const reader = new FileReader();
-                                reader.onload = (e) => {
-                                    const result = e.target.result;
-                                    resolve(result.includes(',') ? result.split(',')[1] : result);
-                                };
+                                reader.onload = (e) => resolve(e.target.result.split(',')[1]);
                                 reader.readAsDataURL(pdfFile);
                             });
                         } else {
@@ -1357,8 +1330,9 @@
                         }
 
                         const apiKey = "";
-                        // 🌟 프롬프트 줄바꿈 에러 완벽 방지 + LaTeX 지시 명확화 🌟
-                        const promptText = "첨부된 이미지(분석표)와 PDF(원문)를 분석하세요. 1. 이미지에서 문항의 '문제 번호(qNum)', '문항분류코드(code)', '배점(score)', '난이도(difficulty)'를 추출하세요. 2. 첨부된 시험지 PDF에서 각 문항의 실제 문제 내용을 파악하세요. 3. 파악한 실제 문제를 푸는 데 필요한 핵심 포인트(aiPoint)와 구체적인 2~3단계 맞춤형 풀이 전략(aiStrategy)을 작성하세요. ★중요★: 모든 수학 기호, 변수, 방정식, 수식은 반드시 LaTeX 형식으로 작성하고 $ (인라인 수식) 또는 $$ (디스플레이 수식) 기호로 감싸주세요. 결과는 마크다운 블록 없이 순수 JSON 배열로만 반환하세요: [{\"qNum\": 1, \"code\": \"MS1310040217\", \"score\": 5, \"difficulty\": 4, \"aiPoint\": \"$x^2+y^2=r^2$ 개념\", \"aiStrategy\": \"[1단계] $x$값을 대입한다.\"}]";
+                        
+                        // 🌟 프롬프트를 한 줄로 작성하고 Response Schema로 강제 포맷팅하여 에러 100% 방지 🌟
+                        const promptText = "첨부된 분석표 이미지와 시험지 PDF 원문을 분석하세요. 1. 이미지에서 각 문항의 '문제 번호(qNum)', '문항분류코드(code)', '배점(score)', '난이도(difficulty, 1~8)'를 추출하세요. 2. 첨부된 시험지 PDF에서 각 문항 번호에 해당하는 '실제 문제 내용'을 파악하세요. 3. 파악한 실제 문제 내용을 바탕으로 해당 문제를 풀 때 반드시 알아야 할 '어려운 포인트(aiPoint)', '필요 개념(aiConcept)', '2~3단계 맞춤형 풀이 전략(aiStrategy)'을 구체적으로 작성하세요. ★중요★: 모든 수학 기호, 수식, 방정식은 반드시 LaTeX 형식으로 작성하고 $ (인라인 수식) 또는 $$ (디스플레이 수식) 기호로 감싸주세요.";
                         const parts = [ { text: promptText } ];
 
                         for(const file of imageFiles) {
@@ -1377,7 +1351,25 @@
                         const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
                         const payload = {
                             contents: [{ parts }],
-                            generationConfig: { responseMimeType: "application/json" }
+                            generationConfig: { 
+                                responseMimeType: "application/json",
+                                responseSchema: {
+                                    type: "ARRAY",
+                                    items: {
+                                        type: "OBJECT",
+                                        properties: {
+                                            qNum: { type: "INTEGER", description: "문제 번호" },
+                                            code: { type: "STRING", description: "문항분류코드" },
+                                            score: { type: "NUMBER", description: "배점" },
+                                            difficulty: { type: "INTEGER", description: "난이도 숫자 1~8" },
+                                            aiPoint: { type: "STRING", description: "LaTeX 형식을 적용한 어려운 포인트" },
+                                            aiConcept: { type: "STRING", description: "LaTeX 형식을 적용한 필요 개념" },
+                                            aiStrategy: { type: "STRING", description: "LaTeX 형식을 적용한 단계별 풀이 전략" }
+                                        },
+                                        required: ["qNum", "code", "score", "difficulty", "aiPoint", "aiConcept", "aiStrategy"]
+                                    }
+                                }
+                            }
                         };
 
                         let retries = 3;
@@ -1386,7 +1378,11 @@
                         while(retries > 0) {
                             try {
                                 const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-                                if (!response.ok) throw new Error(`API Fail: ${response.status}`);
+                                if (!response.ok) {
+                                    const errTxt = await response.text();
+                                    console.error("API Response Fail", errTxt);
+                                    throw new Error(`API Fail: ${response.status}`);
+                                }
                                 data = await response.json();
                                 break;
                             } catch(e) {
@@ -1399,19 +1395,12 @@
 
                         if(data && data.candidates && data.candidates[0].content) {
                             let text = data.candidates[0].content.parts[0].text;
-                            text = text.replace(/```json/gi, '').replace(/```/gi, '').trim(); 
                             
                             let jsonResult = [];
                             try { jsonResult = JSON.parse(text); } catch(e) { console.error("JSON 파싱 에러"); }
 
-                            const imgFileName = imageFiles[0].name.replace(/\.[^/.]+$/, "").trim();
-                            const parsedPeriod = parsePeriodString(imgFileName, '', imageFiles[0].name) || "미분류 시험";
-                            let schoolStr = "";
-                            const schoolMatch = imgFileName.match(/[가-힣a-zA-Z0-9]+(?:중|고|여중|남중|여고|남고|중학교|고등학교)/);
-                            if (schoolMatch) schoolStr = schoolMatch[0];
-                            else if (imgFileName.includes("신곡")) schoolStr = "신곡중";
-                            else if (imgFileName.includes("해강")) schoolStr = "해강중";
-                            else if (imgFileName.includes("남천")) schoolStr = "남천중";
+                            const imgFileName = imageFiles[0].name.replace(/\.[^/.]+$/, "").replace(/_유형분석|유형분석/g, '').trim();
+                            const parsedInfo = parseExamInfo(imgFileName);
 
                             const newExamsFromImg = jsonResult.map(res => {
                                 const rawCode = res.code ? String(res.code) : '';
@@ -1420,9 +1409,10 @@
                                 const mapped = currentMasterDB[normCode] || { major: '미분류 단원', minor: '분류확인필요', concept: rawCode || '분석불가' };
 
                                 return {
-                                    period: parsedPeriod,
+                                    period: imgFileName, 
                                     rawPeriod: imgFileName,
-                                    school: schoolStr || "학교명 미상",
+                                    fileName: imgFileName,
+                                    school: parsedInfo.school || "학교명 미상",
                                     qNum: res.qNum || 0,
                                     type: "객관식",
                                     difficulty: res.difficulty || 4,
@@ -1430,7 +1420,6 @@
                                     minorUnit: mapped.minor,
                                     concept: mapped.concept,
                                     score: res.score || 5,
-                                    fileName: imgFileName,
                                     aiStrategy: res.aiStrategy || "", 
                                     aiPoint: res.aiPoint || "",
                                     aiConcept: res.aiConcept || ""
@@ -1467,11 +1456,14 @@
                             db.collection('artifacts').doc(appId).collection('public').doc('data').collection('exams').doc(`${ex.period}_${ex.qNum}`).set(ex).catch(e => console.warn(e));
                         });
                         
-                        const latestPeriod = addedExams[addedExams.length - 1].period;
+                        // 업로드 후 방금 올린 시험으로 자동 필터링 설정
+                        const justAdded = addedExams[0];
+                        const info = parseExamInfo(justAdded.fileName || justAdded.period);
+                        
                         setFilters(prev => ({
                             ...prev,
-                            semester: latestPeriod.split(' ')[0] || latestPeriod,
-                            examType: latestPeriod.split(' ').slice(1).join(' ') || ''
+                            examYear: info.year !== "미상" ? info.year : '',
+                            examSchoolExam: info.schoolExamDisplay !== "분석 시험" ? info.schoolExamDisplay : ''
                         }));
                         setViewMode('exam'); 
                     }
@@ -1487,14 +1479,15 @@
                     let msg = [];
                     if (isMasterDBUpdated) msg.push(`마스터DB 업데이트`);
                     if (addedExams.length > 0) msg.push(`기출 ${addedExams.length}문항 분석완료`);
-                    if (addedStudents.length > 0) msg.push(`학생 ${addedStudents.length}명 추가`);
+                    if (addedStudents.length > 0) msg.push(`학생 데이터 추가`);
+                    if (addedMediaCount > 0) msg.push(`원문 뷰어 연결`);
 
-                    if (msg.length > 0) showToast(`✅ 데이터 통합 분석 성공! (${msg.join(', ')})`, 'success');
+                    if (msg.length > 0) showToast(`✅ 통합 데이터 처리 성공! (${msg.join(', ')})`, 'success');
                     else showToast(`❌ 처리된 데이터가 없습니다.`, 'error');
 
                 } catch(error) {
                     console.error(error);
-                    showToast("파일 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.", "error");
+                    showToast("파일 처리 중 API 통신 지연 혹은 오류가 발생했습니다. 잠시 후 다시 시도해주세요.", "error");
                 } finally {
                     setIsGenerating(false);
                     e.target.value = '';
@@ -1542,19 +1535,19 @@
             };
 
             const deleteStudent = (studentName, period) => {
-                requestConfirm(`[${period}] 시험의 '${studentName}' 학생 데이터를 영구 삭제하시겠습니까?`, async () => {
+                requestConfirm(`해당 학생 데이터를 영구 삭제하시겠습니까?`, async () => {
                     try {
                         await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('students').doc(`${studentName}_${period}`).delete();
                         showToast("✅ 해당 학생의 데이터가 삭제되었습니다.", "success");
-                        if (filters.studentName === studentName && filters.semester + " " + filters.examType === period) {
-                            setFilters({ ...filters, studentName: '' });
+                        if (filters.studentName === studentName) {
+                            setFilters(p => ({ ...p, studentName: '' }));
                         }
                     } catch (e) { console.error(e); showToast("삭제 중 오류가 발생했습니다.", "error"); }
                 });
             };
 
             const deletePeriod = (period) => {
-                requestConfirm(`⚠️ [${period}] 시험의 모든 문항 및 학생 데이터를 정말 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`, async () => {
+                requestConfirm(`⚠️ 이 시험에 관련된 모든 기출 문항 및 학생 데이터를 정말 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`, async () => {
                     try {
                         const batch = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('exams').where('period', '==', period).get().then(snap => {
                             const batchOp = db.batch();
@@ -1562,8 +1555,8 @@
                             db.collection('artifacts').doc(appId).collection('public').doc('data').collection('students').where('period', '==', period).get().then(sSnap => {
                                 sSnap.forEach(doc => batchOp.delete(doc.ref));
                                 batchOp.commit().then(() => {
-                                    showToast(`✅ [${period}] 관련 모든 데이터가 삭제되었습니다.`, "success");
-                                    if (filters.semester + " " + filters.examType === period) setFilters({ semester: '', examType: '', studentName: '' });
+                                    showToast(`✅ 관련 모든 데이터가 삭제되었습니다.`, "success");
+                                    setFilters({ studentCourse: '', studentExam: '', studentName: '', examYear: '', examSchoolExam: '' });
                                 });
                             });
                         });
@@ -1572,7 +1565,7 @@
             };
 
             const handleClearAll = () => {
-                requestConfirm("🚨 경고: 클라우드와 현재 기기에 저장된 [모든 시험 및 학생 데이터]를 영구적으로 삭제합니다.\n계속 진행하시겠습니까?", async () => {
+                requestConfirm("🚨 경고: 클라우드에 저장된 [모든 시험 및 학생 데이터]를 영구적으로 삭제합니다.\n계속 진행하시겠습니까?", async () => {
                     try {
                         const examsSnap = await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('exams').get();
                         const studentsSnap = await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('students').get();
@@ -1583,7 +1576,7 @@
                         await Promise.all(promises);
 
                         localStorage.removeItem('math_exams_cache'); localStorage.removeItem('math_students_cache');
-                        setFilters({ semester: '', examType: '', studentName: '' });
+                        setFilters({ studentCourse: '', studentExam: '', studentName: '', examYear: '', examSchoolExam: '' });
                         setShowDataModal(false);
                         showToast("✅ 모든 데이터가 성공적으로 초기화되었습니다.", "success");
                     } catch (error) { console.error("데이터 삭제 중 오류 발생:", error); showToast("데이터 삭제에 실패했습니다.", "error"); }
@@ -1594,7 +1587,7 @@
 
             return (
                 <div className="min-h-screen pb-12 relative z-0">
-                    {/* 🌟 팝업 최우선 레이어 적용 🌟 */}
+                    {/* 🌟 팝업 최우선 레이어 적용 (Z-index: 999999) 🌟 */}
                     {toast.show && (
                         <div className={`fixed bottom-5 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-full shadow-lg z-[999999] font-bold text-white transition-all animate-in fade-in slide-in-from-bottom-5 ${toast.type === 'error' ? 'bg-rose-500' : 'bg-emerald-600'}`}>
                             {toast.message}
@@ -1650,36 +1643,48 @@
                     )}
 
                     <div className="bg-white border-b shadow-sm p-4 sticky top-0 z-40 no-print flex flex-wrap gap-4 items-center justify-between">
-                        <div className="flex items-center gap-6">
-                            <h1 className="text-xl font-black text-indigo-900 flex items-center gap-2">
+                        {/* 🌟 뷰 모드 탭을 제일 왼쪽으로 이동 및 드롭다운 통일 적용 🌟 */}
+                        <div className="flex items-center gap-6 w-full max-w-[850px]">
+                            <h1 className="text-xl font-black text-indigo-900 flex items-center gap-2 mr-2 shrink-0">
                                 <Icon name="graduation-cap" size={24} className="text-indigo-600"/>
                                 학습 분석 시스템
-                                <span className="text-[10px] bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded border border-emerald-100 tracking-tighter uppercase font-bold">Cloud Sync</span>
                             </h1>
                             
-                            <div className="flex gap-2 bg-slate-50 p-1.5 rounded-lg border text-sm font-bold items-center z-50">
-                                <select className="bg-transparent outline-none cursor-pointer" 
-                                        value={filters.semester} onChange={e => setFilters(p => ({...p, semester: e.target.value, studentName: ''}))}>
-                                    <option value="">학년학기</option>
-                                    {optionsData.semesters.map(s => <option key={s} value={s}>{s}</option>)}
-                                </select>
-                                <select className="bg-transparent outline-none cursor-pointer max-w-[150px] truncate ml-2"
-                                        value={filters.examType} onChange={e => setFilters(p => ({...p, examType: e.target.value, studentName: ''}))}>
-                                    <option value="">시험 선택</option>
-                                    {optionsData.examTypes.map(s => <option key={s} value={s}>{s}</option>)}
-                                </select>
-                                
-                                <div className="flex bg-slate-200 p-0.5 rounded ml-3">
-                                    <button onClick={() => setViewMode('student')} className={`cursor-pointer px-3 py-1 rounded text-xs transition-colors ${viewMode==='student'?'bg-white shadow text-indigo-600':'text-slate-500'}`}>개별 성취도</button>
-                                    <button onClick={() => setViewMode('exam')} className={`cursor-pointer px-3 py-1 rounded text-xs transition-colors ${viewMode==='exam'?'bg-white shadow text-orange-600':'text-slate-500'}`}>기출 분석</button>
-                                </div>
+                            <div className="flex bg-slate-200 p-1 rounded-lg mr-2 shrink-0 shadow-inner">
+                                <button onClick={() => { setViewMode('student'); setFilters({ studentCourse: '', studentExam: '', studentName: '', examYear: '', examSchoolExam: ''}); }} className={`cursor-pointer px-4 py-1.5 rounded-md text-[13px] font-black transition-all duration-200 ${viewMode==='student'?'bg-white shadow-sm text-indigo-700':'text-slate-500 hover:text-slate-700'}`}>개별 성취도</button>
+                                <button onClick={() => { setViewMode('exam'); setFilters({ studentCourse: '', studentExam: '', studentName: '', examYear: '', examSchoolExam: ''}); }} className={`cursor-pointer px-4 py-1.5 rounded-md text-[13px] font-black transition-all duration-200 ${viewMode==='exam'?'bg-white shadow-sm text-orange-600':'text-slate-500 hover:text-slate-700'}`}>기출 분석</button>
+                            </div>
 
-                                {viewMode === 'student' && (
-                                    <select className="bg-transparent outline-none text-indigo-600 cursor-pointer max-w-[150px] truncate ml-3"
-                                            value={filters.studentName} onChange={e => setFilters(p => ({...p, studentName: e.target.value}))}>
-                                        <option value="">학생 이름 선택</option>
-                                        {optionsData.students.map(s => <option key={s} value={s}>{s}</option>)}
-                                    </select>
+                            <div className="flex gap-2 items-center z-50 flex-1">
+                                {viewMode === 'student' ? (
+                                    <React.Fragment>
+                                        <select value={filters.studentCourse} onChange={e => setFilters(p => ({...p, studentCourse: e.target.value, studentExam: '', studentName: ''}))} className="bg-slate-50 border border-slate-200 px-3 py-2 rounded-lg text-[13.5px] font-bold text-indigo-700 outline-none cursor-pointer min-w-[110px] shadow-sm">
+                                            <option value="">과정 선택</option>
+                                            {optionsData.studentCourses.map(s => <option key={s} value={s}>{s}</option>)}
+                                        </select>
+                                        <select value={filters.studentExam} onChange={e => setFilters(p => ({...p, studentExam: e.target.value, studentName: ''}))} className="bg-slate-50 border border-slate-200 px-3 py-2 rounded-lg text-[13.5px] font-bold text-slate-700 outline-none cursor-pointer min-w-[110px] shadow-sm">
+                                            <option value="">시험 시기</option>
+                                            {optionsData.studentExams.map(s => <option key={s} value={s}>{s}</option>)}
+                                        </select>
+                                        <select value={filters.studentName} onChange={e => setFilters(p => ({...p, studentName: e.target.value}))} className="bg-slate-50 border border-slate-200 px-3 py-2 rounded-lg text-[13.5px] font-black text-indigo-600 outline-none cursor-pointer min-w-[130px] shadow-sm">
+                                            <option value="">학생 이름 선택</option>
+                                            {optionsData.studentNames.map(s => <option key={s} value={s}>{s}</option>)}
+                                        </select>
+                                    </React.Fragment>
+                                ) : (
+                                    <React.Fragment>
+                                        <select disabled className="bg-slate-100 border border-slate-200 px-3 py-2 rounded-lg text-[13.5px] font-black text-orange-700 outline-none cursor-not-allowed shadow-sm min-w-[110px] opacity-80 appearance-none text-center">
+                                            <option>기출분석</option>
+                                        </select>
+                                        <select value={filters.examYear} onChange={e => setFilters(p => ({...p, examYear: e.target.value, examSchoolExam: ''}))} className="bg-slate-50 border border-slate-200 px-3 py-2 rounded-lg text-[13.5px] font-bold text-orange-600 outline-none cursor-pointer min-w-[110px] shadow-sm">
+                                            <option value="">연도 선택</option>
+                                            {optionsData.examYears.map(s => <option key={s} value={s}>{s}</option>)}
+                                        </select>
+                                        <select value={filters.examSchoolExam} onChange={e => setFilters(p => ({...p, examSchoolExam: e.target.value}))} className="bg-slate-50 border border-slate-200 px-3 py-2 rounded-lg text-[13.5px] font-black text-slate-700 outline-none cursor-pointer min-w-[200px] shadow-sm">
+                                            <option value="">학교 및 시험 선택</option>
+                                            {optionsData.examSchoolExams.map(s => <option key={s} value={s}>{s}</option>)}
+                                        </select>
+                                    </React.Fragment>
                                 )}
                             </div>
                         </div>
@@ -1694,7 +1699,7 @@
                             {/* 🌟 궁극의 원클릭 데이터 통합 업로드 버튼 🌟 */}
                             <label className="cursor-pointer bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-1.5 border hover:bg-indigo-700 transition-colors shadow-md" title="클릭하여 데이터(마스터DB, 엑셀, 이미지, PDF 등)를 한 번에 업로드하세요.">
                                 {isGenerating ? <Icon name="loader-2" size={16} className="animate-spin-slow" /> : <Icon name="file-up" size={16} />}
-                                {isGenerating ? '데이터 분석 중...' : '데이터 통합 업로드'}
+                                {isGenerating ? 'AI 분석 중...' : '데이터 업로드'}
                                 <input type="file" accept=".xlsx, .xls, .csv, .tsv, .pdf, image/*" multiple className="hidden" onClick={(e) => (e.target.value = '')} onChange={handleFileUpload} />
                             </label>
 
@@ -1727,10 +1732,13 @@
                                     {optionsData.semesters.length === 0 ? (
                                         <div className="text-center text-slate-400 py-10 font-bold">저장된 데이터가 없습니다.</div>
                                     ) : (
-                                        [...new Set(exams.map(e => e.period))].sort().map(period => (
+                                        [...new Set(exams.map(e => e.period))].sort().map(period => {
+                                            const info = parseExamInfo(period);
+                                            const displayPeriod = `${info.year !== '미상'? info.year : ''} ${info.schoolExamDisplay}`.trim();
+                                            return (
                                             <div key={period} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                                                 <div className="bg-slate-50 px-4 py-3 flex justify-between items-center border-b border-slate-200">
-                                                    <span className="font-black text-indigo-700">{period} 시험</span>
+                                                    <span className="font-black text-indigo-700">{displayPeriod} 시험</span>
                                                     <button onClick={() => deletePeriod(period)} className="cursor-pointer text-xs text-rose-600 font-bold hover:bg-rose-50 px-2 py-1 rounded border border-rose-200 transition-colors">이 시험 전체 삭제</button>
                                                 </div>
                                                 <ul className="divide-y divide-slate-100">
@@ -1745,7 +1753,7 @@
                                                     )}
                                                 </ul>
                                             </div>
-                                        ))
+                                        )})
                                     )}
                                 </div>
                                 
@@ -1764,14 +1772,14 @@
                             <Icon name="cloud" size={64} className="mx-auto mb-4 opacity-20" />
                             <h2 className="text-xl font-black mb-2 uppercase tracking-tight text-slate-400">Database Ready</h2>
                             <p className="text-sm font-medium text-slate-400 leading-relaxed">
-                                상단의 <strong>[데이터 통합 업로드]</strong> 버튼을 눌러 작업을 시작하세요.<br/>
-                                <span className="opacity-70">✅ 분류코드 마스터DB(최초1회), <strong>시험지 원문(PDF)</strong>, <strong>분석 이미지(JPG)</strong>를 동시에 올리면 AI가 즉시 자동 분석합니다.</span>
+                                상단의 <strong>[데이터 업로드]</strong> 버튼을 눌러 작업을 시작하세요.<br/>
+                                <span className="opacity-70">✅ 마스터DB(최초1회), <strong>시험지 원문(PDF)</strong>, <strong>분석 이미지(JPG)</strong>를 동시에 올리면 AI가 즉시 문제를 풀고 분석합니다.</span>
                             </p>
                             
                             <div className="mt-8 bg-slate-100 px-6 py-3 rounded-xl border border-slate-200 shadow-inner">
                                 <span className="text-xs font-bold text-slate-500 flex items-center justify-center gap-1.5">
                                     <Icon name="database" size={14} className="text-indigo-500"/>
-                                    현재 마스터 DB 로드 상태: <span className="text-indigo-600 font-black text-[15px] mx-1">{Object.keys(masterDB).length}</span> 개의 분류코드가 인식되어 있습니다.
+                                    현재 클라우드 마스터 DB: <span className="text-indigo-600 font-black text-[15px] mx-1">{Object.keys(masterDB).length}</span> 개의 분류코드 저장 완료
                                 </span>
                             </div>
                         </div>
@@ -1785,7 +1793,7 @@
                                     <div>
                                         <div className="text-indigo-600 font-black text-xs tracking-widest mb-1 uppercase tracking-tighter">Achievement Report</div>
                                         <div className="flex items-baseline gap-3">
-                                            <h1 className="text-[28px] font-black text-slate-900 leading-tight">{analysisData.targetPeriod} 수학 성취도 리포트</h1>
+                                            <h1 className="text-[28px] font-black text-slate-900 leading-tight">{analysisData.targetPeriod.replace('기출분석 ', '')} 수학 성취도 리포트</h1>
                                             {analysisData.schoolName && (
                                                 <span className="text-[17px] font-bold text-slate-500 bg-slate-100 px-3 py-1 rounded-md">{analysisData.schoolName}</span>
                                             )}
