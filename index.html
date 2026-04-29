@@ -378,7 +378,7 @@
             const kiceGuidelines = {
                 "수와 연산": "실수의 체계와 성질을 명확히 이해하고, 빠르고 정확한 연산을 요구합니다.",
                 "문자와 식": "주어진 조건을 수식으로 정확히 표현하고, 다항식의 전개와 인수분해, 그리고 방정식 및 부등식을 논리적으로 해결하는 능력이 필요합니다.",
-                "함수": "함수의 정의를 바탕으로 그래프를 그리며, x절편, y절편, 기울기, 꼭짓점 등의 기하학적 의미를 파악하는 것이 중요합니다.",
+                "함수": "함수의 정의를 바탕으로 그래프를 그리고, x절편, y절편, 기울기, 꼭짓점 등의 기하학적 의미를 파악하는 것이 중요합니다.",
                 "기하": "도형의 성질(합동, 닮음, 피타고라스 정리, 삼각비, 원 등)을 이용하여 보조선을 긋고 길이나 넓이를 구하는 공간 지각력이 요구됩니다.",
                 "확률과 통계": "경우의 수를 빠짐없이 구하고, 확률의 기본 성질 및 대푯값과 산포도의 의미를 바탕으로 실생활 상황을 해석하는 사고방식이 필요합니다."
             };
@@ -636,133 +636,7 @@
             );
         };
 
-        const StudentReportA4View = ({ analysisData, filters, comments }) => {
-            return (
-                <div className="pt-8 no-print:bg-slate-100">
-                    <div className="a4-page bg-white print-page-1">
-                        <div className="border-b-4 border-indigo-900 pb-6 mb-8 print:pb-4 print:mb-4 flex justify-between items-end">
-                            <div>
-                                <div className="text-indigo-600 font-black text-xs tracking-widest mb-1 uppercase tracking-tighter">Achievement Report</div>
-                                <div className="flex items-baseline gap-3">
-                                    <h1 className="text-[28px] font-black text-slate-900 leading-tight">{analysisData.targetPeriod.replace('기출분석 ', '')} 수학 성취도 리포트</h1>
-                                    {analysisData.schoolName && (
-                                        <span className="text-[17px] font-bold text-slate-500 bg-slate-100 px-3 py-1 rounded-md">{analysisData.schoolName}</span>
-                                    )}
-                                </div>
-                            </div>
-                            <div className="text-right flex items-center gap-4">
-                                <div>
-                                    <p className="text-sm text-slate-500 font-bold mb-1 uppercase tracking-tighter">Student Name</p>
-                                    <p className="text-2xl font-black text-slate-800 bg-indigo-50 px-4 py-1 rounded-lg shadow-sm border border-indigo-100">{filters.studentName}</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="flex gap-6 mb-10 print:mb-5">
-                            <div className="w-1/3 bg-indigo-600 rounded-2xl p-6 text-white flex flex-col justify-center items-center relative overflow-hidden shadow-xl">
-                                <div className="absolute -right-4 -top-4 opacity-10"><Icon name="target" size={120}/></div>
-                                <span className="text-[10px] font-bold uppercase opacity-70 tracking-widest z-10">Total Score</span>
-                                <div className="flex items-baseline gap-1 z-10">
-                                    <span className="text-6xl font-black tracking-tighter">{analysisData.totalScore}</span>
-                                    <span className="text-2xl font-bold">점</span>
-                                </div>
-                                <div className="mt-3 text-xs font-bold opacity-80 z-10 bg-indigo-800/50 px-4 py-1.5 rounded-full">
-                                    {analysisData.results.filter(r=>r.earnedScore > 0).length} / {analysisData.results.length} 문항 부분/전체 정답
-                                </div>
-                            </div>
-
-                            <div className="w-2/3 bg-slate-50 rounded-2xl border border-slate-200 p-6 flex flex-col justify-center shadow-sm">
-                                <h3 className="text-lg font-black text-slate-800 mb-4 print:mb-2 flex items-center gap-2 font-sans tracking-tight"><Icon name="sparkles" size={18} className="text-amber-500"/> 학습 종합 분석</h3>
-                                <div className="grid grid-cols-2 gap-4 mb-4 print:mb-2">
-                                    <div className="bg-white p-3 rounded-xl border border-emerald-100 flex items-start gap-3 shadow-sm">
-                                        <div className="bg-emerald-100 p-2 rounded-lg text-emerald-600 shrink-0"><Icon name="trending-up" size={18}/></div>
-                                        <div className="min-w-0 flex-1">
-                                            <p className="text-[10px] text-slate-400 font-bold mb-1">강한 단원</p>
-                                            <p className="text-[13px] font-black text-slate-800 whitespace-normal break-keep leading-snug">{comments.strong}</p>
-                                        </div>
-                                    </div>
-                                    <div className="bg-white p-3 rounded-xl border border-rose-100 flex items-start gap-3 shadow-sm">
-                                        <div className="bg-rose-100 p-2 rounded-lg text-rose-600 shrink-0"><Icon name="trending-down" size={18}/></div>
-                                        <div className="min-w-0 flex-1">
-                                            <p className="text-[10px] text-slate-400 font-bold mb-1">
-                                                {comments.weak.includes('완벽함') || comments.weak.includes('양호함') ? '특이사항' : '보완 단원'}
-                                            </p>
-                                            <p className={`text-[13px] font-black whitespace-normal break-keep leading-snug ${comments.weak.includes('완벽함') ? 'text-emerald-600' : 'text-slate-800'}`}>
-                                                {comments.weak}
-                                            </p>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="text-[13.5px] text-slate-700 leading-relaxed font-medium bg-white p-4 rounded-xl border border-slate-100 shadow-sm whitespace-pre-wrap break-keep">
-                                    <span className="font-bold text-indigo-600 block mb-1">💡 전문 학습 가이드</span><br/>{comments.method}
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-10 print:gap-6 mb-8 print:mb-2">
-                            <div className="col-span-1 border-r border-slate-100 pr-10 print:pr-6">
-                                <h3 className="text-lg font-black text-slate-800 mb-6 print:mb-3 flex items-center gap-2 border-b-2 border-indigo-50 pb-2 tracking-tight"><Icon name="bar-chart-2" className="text-indigo-500" size={18}/> 단원별 성취도</h3>
-                                <HorizontalBarChart data={analysisData.unitData} color="#4f46e5" />
-                            </div>
-                            
-                            <div className="col-span-1 flex flex-col gap-8 print:gap-4">
-                                <div>
-                                    <h3 className="text-lg font-black text-slate-800 mb-6 print:mb-3 flex items-center gap-2 border-b-2 border-emerald-50 pb-2 tracking-tight"><Icon name="layers" className="text-emerald-500" size={18}/> 난이도별 성취도</h3>
-                                    <HorizontalBarChart data={analysisData.diffData} color="#10b981" />
-                                </div>
-                                
-                                {analysisData.typeStats && Object.keys(analysisData.typeStats).length > 0 && (
-                                    <div>
-                                        <h3 className="text-lg font-black text-slate-800 mb-4 print:mb-2 flex items-center gap-2 border-b-2 border-amber-50 pb-2 tracking-tight"><Icon name="pie-chart" className="text-amber-500" size={18}/> 문제유형별 정답률</h3>
-                                        <div className="flex flex-wrap gap-4 justify-center md:justify-start w-full">
-                                            {Object.entries(analysisData.typeStats).map(([type, stats]) => (
-                                                <DonutChart key={type} data={[{name: '정답', value: stats.correct, color: '#4f46e5'}, {name: '오답', value: stats.total-stats.correct, color: '#e2e8f0'}]} title={type} />
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                        <div className="absolute bottom-10 print:bottom-6 left-0 right-0 text-center text-[10px] text-slate-300 font-bold tracking-[0.2em] uppercase font-sans">
-                            Academic Analysis System — Page 1
-                        </div>
-                    </div>
-
-                    <div className="a4-page bg-white flex flex-col print-page-auto">
-                        <div className="border-b-2 border-slate-200 pb-4 mb-6 flex items-center justify-between">
-                            <h2 className="text-2xl font-black text-slate-900 flex items-center gap-2 tracking-tight">
-                                <Icon name="check-square" size={24} className="text-indigo-600"/> 문항별 상세 정오표
-                            </h2>
-                            <span className="text-sm font-bold text-slate-400 uppercase tracking-widest">{analysisData.results.length} Questions</span>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 flex-1 items-start content-start">
-                            {analysisData.results.map((row, idx) => (
-                                <DetailRowItem key={idx} r={row} />
-                            ))}
-                        </div>
-                        <div className="mt-8 text-center text-[10px] text-slate-300 font-bold tracking-[0.2em] uppercase pt-4 border-t border-slate-50 font-sans">
-                            Academic Analysis System — Page 2
-                        </div>
-                    </div>
-                </div>
-            );
-        };
-
-        const ExamAnalysisA4View = ({ data }) => {
-            const [questionImages, setQuestionImages] = useState({});
-
-            const handleImageUpload = (e, qNum) => {
-                const file = e.target.files[0];
-                if (file) {
-                    const reader = new FileReader();
-                    reader.onload = (event) => {
-                        setQuestionImages(prev => ({ ...prev, [qNum]: event.target.result }));
-                    };
-                    reader.readAsDataURL(file);
-                }
-            };
-
+        const ExamAnalysisView = ({ data }) => {
             const formattedTitleElements = useMemo(() => {
                 const parts = [data.year !== "미상" ? data.year : "", data.schoolExamDisplay].filter(Boolean);
                 if (parts.length > 0) {
@@ -772,12 +646,15 @@
                         </h1>
                     );
                 }
+
                 return (
                     <h1 className="text-[26px] font-black text-slate-900 leading-tight break-keep">
                         <span className="text-orange-600 mr-2">{data.fileName}</span>분석
                     </h1>
                 );
             }, [data]);
+
+            if (!data) return <div className="p-8 text-center h-screen flex items-center justify-center font-bold text-slate-500">기출 데이터를 불러올 수 없습니다. 시험을 먼저 선택해주세요.</div>;
 
             return (
                 <div className="pt-8 no-print:bg-slate-100 font-sans">
@@ -799,6 +676,7 @@
                                 <div>
                                     <h3 className="text-sm font-bold text-slate-500 mb-2 flex items-center gap-1"><Icon name="book-open" size={16}/> 시험 범위</h3>
                                     <div className="flex flex-wrap gap-2">
+                                        {/* 🌟 시험범위 무조건 순수 대단원만 나오게 됨 */}
                                         {data.scopes.map((scope, idx) => (
                                             <span key={idx} className="bg-white border border-slate-200 text-slate-700 px-3 py-1.5 rounded-lg text-[13px] font-bold shadow-sm">{scope}</span>
                                         ))}
@@ -817,14 +695,17 @@
                             </div>
                         </div>
 
+                        {/* 🌟 2. 종합 출제 경향 및 학습 전략 보고서 🌟 */}
                         <div className="mb-8 break-inside-avoid">
                             <h2 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2 border-l-4 border-orange-500 pl-3">2. 종합 출제 경향 및 학습 전략</h2>
+                            
                             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
                                 <div>
                                     <h3 className="text-[15px] font-black text-indigo-700 mb-2">📝 1. 시험 총평</h3>
                                     <p className="text-[14px] font-bold text-slate-800 mb-1 leading-snug">{data.reportContent.summaryLine}</p>
                                     <p className="text-[13px] text-slate-600 leading-relaxed break-keep whitespace-pre-wrap">{data.reportContent.summaryDetail}</p>
                                 </div>
+
                                 <div>
                                     <h3 className="text-[15px] font-black text-emerald-700 mb-3">🎯 2. 단원별 핵심 포인트 및 학습 전략</h3>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -842,29 +723,17 @@
                             </div>
                         </div>
 
-                        {/* 🌟 3. 고난도 문항 심층 분석 - 요청하신 대로 '과거의 완벽한 이미지 업로드 창' 그대로 유지 🌟 */}
+                        {/* 🌟 3. 상대적 고난도 문항 심층 분석 (요청하신 대로 이미지 칸 완벽히 삭제) 🌟 */}
                         {data.reportContent.hardQuestionsList.length > 0 && (
                             <div className="mb-8 break-inside-avoid">
                                 <h2 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2 border-l-4 border-orange-500 pl-3">3. 상대적 고난도 문항 심층 분석</h2>
                                 <div className="grid grid-cols-2 gap-4 print:gap-3">
                                     {data.reportContent.hardQuestionsList.map((q, idx) => (
-                                        <div key={idx} className="bg-white border border-orange-200 rounded-2xl shadow-sm relative overflow-hidden flex flex-col">
+                                        <div key={idx} className="bg-white border border-orange-200 rounded-2xl shadow-sm relative overflow-hidden flex flex-col p-5 pt-7">
                                             <div className="absolute top-0 right-0 bg-orange-500 text-white text-[10px] font-bold px-3 py-1 rounded-bl-lg z-10">고난도 문항</div>
                                             
-                                            {/* 🌟 이 부분이 선생님이 원하시던 원본 카메라 모양 업로드 칸입니다 🌟 */}
-                                            <label className="bg-slate-50 w-full min-h-[150px] flex flex-col items-center justify-center border-b border-slate-200 cursor-pointer hover:bg-slate-100 transition-colors relative group">
-                                                <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, q.qNum)} />
-                                                {questionImages[q.qNum] ? (
-                                                    <img src={questionImages[q.qNum]} alt={`문항 ${q.qNum}`} className="max-w-full max-h-[300px] object-contain p-2" />
-                                                ) : (
-                                                    <div className="flex flex-col items-center text-slate-400 group-hover:text-orange-500 transition-colors px-4 text-center">
-                                                        <Icon name="camera" size={32} className="mb-2 opacity-50 group-hover:opacity-100" />
-                                                        <span className="font-bold text-sm">이곳을 클릭해 핵심 문항 이미지를 첨부하세요</span>
-                                                    </div>
-                                                )}
-                                            </label>
-
-                                            <div className="p-4 flex flex-col flex-1">
+                                            {/* 카메라 업로드 블록 완전히 제거됨 */}
+                                            <div className="flex flex-col flex-1">
                                                 <h3 className="text-[16px] font-black text-slate-800 mb-3 flex items-center gap-2">
                                                     <div className="w-6 h-6 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center text-sm shrink-0">{q.qNum}</div>
                                                     <MathText text={q.concept} className="truncate text-sm font-bold" />
@@ -885,6 +754,7 @@
                                 </div>
                             </div>
                         )}
+                        
                         <div className="absolute bottom-10 print:bottom-6 left-0 right-0 text-center text-[10px] text-slate-300 font-bold tracking-[0.2em] uppercase font-sans">
                             Exam Analysis Report — Page 1
                         </div>
@@ -936,8 +806,8 @@
         };
 
         function App() {
-            // 🚨 서버 배포 시, 이 따옴표 사이에 발급받으신 Google Gemini API 키를 넣어야 자동 분석이 작동합니다! 🚨
-            const apiKey = "AIzaSyAe7oQVGQYm8UjXO_XBGcDYOpY8slM_1rg";
+            // 🚨 서버 배포 시, 이 쌍따옴표 사이에 발급받으신 Google Gemini API 키를 넣어야 자동 분석이 작동합니다! 🚨
+            const apiKey = "";
             
             const urlParams = new URLSearchParams(window.location.search);
             const reportParam = urlParams.get('report');
@@ -1313,15 +1183,16 @@
                 const imageFiles = files.filter(f => f.type.startsWith('image/'));
                 const otherFiles = files.filter(f => !f.type.startsWith('image/') && !f.name.toLowerCase().endsWith('.pdf'));
 
+                // 🚨 서버 환경을 위한 API Key 검사 🚨
                 let currentApiKey = apiKey || localStorage.getItem('gemini_api_key') || "";
                 if (imageFiles.length > 0 && !currentApiKey) {
-                    showToast("소스코드 상단 apiKey 변수에 Gemini API Key를 입력하셔야 이미지 분석이 가능합니다.", "error");
+                    showToast("코드 상단의 apiKey 변수에 Gemini API Key를 입력하셔야 이미지 자동 분석이 가능합니다.", "error");
                     e.target.value = ''; 
                     return; 
                 }
 
                 setIsGenerating(true);
-                showToast("데이터를 분석 중입니다. 파일 크기에 따라 잠시 소요될 수 있습니다...", "info");
+                showToast("데이터를 처리 중입니다. 파일 크기에 따라 잠시 소요될 수 있습니다...", "info");
 
                 try {
                     for (const file of otherFiles) {
@@ -1536,7 +1407,7 @@
                             addedMediaCount++;
                         }
 
-                        let url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${currentApiKey}`;
+                        let url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${currentApiKey}`;
                         
                         // 🌟 치명적 문법 오류 완벽 방어: 1줄로 결합 및 줄바꿈 완전 제거 완료 🌟
                         const promptText = "첨부된 분석표 이미지와 시험지 PDF 원문을 분석하세요. 1. 이미지에서 각 문항의 '문제 번호(qNum)', '문항분류코드(code)', '배점(score)', '난이도(difficulty, 1~8)'를 추출하세요. (이미지에 단원 정보가 없다면 문항분류코드와 PDF의 문제 내용을 분석하여 중고등 수학의 어느 대단원, 소단원, 출제내용인지 스스로 판단하여 majorUnit, minorUnit, concept에 채워주세요). 2. 첨부된 시험지 PDF에서 각 문항 번호에 해당하는 '실제 문제 내용'을 파악하세요. 3. 파악한 실제 문제 내용을 바탕으로 해당 문제를 풀 때 반드시 알아야 할 '어려운 포인트(aiPoint)', '필요 개념(aiConcept)', '2~3단계 맞춤형 풀이 전략(aiStrategy)'을 구체적으로 작성하세요. 중요: 모든 수학 기호, 수식은 반드시 LaTeX 형식으로 작성하고 $ 또는 $$ 기호로 감싸주세요. 결과를 순수 JSON 배열 형태로만 반환하세요.";
@@ -1609,13 +1480,7 @@
                             let text = data.candidates[0].content.parts[0].text;
                             
                             let jsonResult = [];
-                            try {
-                                text = String(text || '').replace(/```json/g, '').replace(/```/g, '').trim();
-                                jsonResult = JSON.parse(text);
-                            } catch(e) {
-                                console.error("JSON 파싱 에러", text, e);
-                                showToast("AI 응답을 JSON으로 변환하지 못했습니다. 다시 시도해주세요.", "error");
-                            }
+                            try { jsonResult = JSON.parse(text); } catch(e) { console.error("JSON 파싱 에러"); }
 
                             const imgFileName = imageFiles[0].name.replace(/\.[^/.]+$/, "").replace(/_유형분석|유형분석/g, '').trim();
                             const parsedInfo = parseExamInfo(imgFileName);
@@ -2066,7 +1931,7 @@
                             <p className="text-sm font-medium text-slate-400 leading-relaxed">
                                 상단의 <strong>[데이터 업로드]</strong> 버튼을 눌러 작업을 시작하세요.<br/>
                                 <span className="opacity-70">
-                                    // 🚨 주의: 서버에 배포할 때는 소스코드 상단(function App)의 apiKey 변수에 실제 Gemini API Key를 입력해야 자동 분석이 작동합니다.<br/>
+                                    // 🚨 주의: 서버 배포 시 소스코드 상단(function App)의 apiKey 변수에 실제 Gemini API Key를 입력해야 자동 분석이 작동합니다.<br/>
                                     ✅ 분류코드 마스터DB(최초1회), <strong>시험지 원문(PDF)</strong>, <strong>분석 이미지(JPG)</strong>를 동시에 올리면 AI가 즉시 문제를 풀고 분석합니다.</span>
                             </p>
                             
@@ -2277,22 +2142,23 @@
                                 {examReportData.reportContent.hardQuestionsList.length > 0 && (
                                     <div className="mb-8 break-inside-avoid">
                                         <h2 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2 border-l-4 border-orange-500 pl-3">3. 상대적 고난도 문항 심층 분석</h2>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 print:gap-3">
+                                        <div className="grid grid-cols-2 gap-4 print:gap-3">
                                             {examReportData.reportContent.hardQuestionsList.map((q, idx) => (
                                                 <div key={idx} className="bg-white border border-orange-200 rounded-2xl shadow-sm relative overflow-hidden flex flex-col p-5 pt-7">
                                                     <div className="absolute top-0 right-0 bg-orange-500 text-white text-[10px] font-bold px-3 py-1 rounded-bl-lg z-10">고난도 문항</div>
+                                                    
                                                     <div className="flex flex-col flex-1">
                                                         <h3 className="text-[16px] font-black text-slate-800 mb-3 flex items-center gap-2">
                                                             <div className="w-6 h-6 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center text-sm shrink-0">{q.qNum}</div>
-                                                            <MathText text={q.concept} className="text-sm font-bold" />
+                                                            <MathText text={q.concept} className="truncate text-sm font-bold" />
                                                         </h3>
-                                                        <div className="space-y-3 flex-1">
+                                                        <div className="space-y-3 flex-1 flex flex-col justify-end">
                                                             <div>
                                                                 <p className="text-[11px] font-bold text-orange-500 mb-0.5">🎯 출제의도</p>
                                                                 <MathText text={q.intent} className="text-[13px] text-slate-700 font-medium break-keep leading-tight" />
                                                             </div>
                                                             <div className="bg-orange-50 p-3 rounded-lg border border-orange-100 mt-2">
-                                                                <p className="text-[11px] font-bold text-orange-600 mb-1">💡 공략</p>
+                                                                <p className="text-[11px] font-bold text-orange-600 mb-1">💡 공략 (해결전략)</p>
                                                                 <MathText text={q.strategy} className="text-[12px] text-slate-800 font-bold leading-relaxed break-keep" />
                                                             </div>
                                                         </div>
@@ -2302,26 +2168,46 @@
                                         </div>
                                     </div>
                                 )}
+                                
                                 <div className="absolute bottom-10 print:bottom-6 left-0 right-0 text-center text-[10px] text-slate-300 font-bold tracking-[0.2em] uppercase font-sans">
                                     Exam Analysis Report — Page 1
                                 </div>
                             </div>
-
+                            
                             <div className="a4-page bg-white print-page-auto relative">
                                 <div className="mb-4">
                                     <h2 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2 border-l-4 border-orange-500 pl-3">4. 문항별 상세 분석</h2>
                                     <div className="overflow-x-auto rounded-xl border border-slate-200">
                                         <table className="w-full text-left border-collapse text-[12px]">
-                                            <thead><tr className="bg-slate-50 border-b border-slate-200"><th className="py-2.5 px-3 font-bold text-slate-500 text-center w-12 border-r">문항번호</th><th className="py-2.5 px-3 font-bold text-slate-500 text-center w-16 border-r">형태</th><th className="py-2.5 px-3 font-bold text-slate-500 border-r w-32">출제단원</th><th className="py-2.5 px-3 font-bold text-slate-500 border-r w-40">출제내용</th><th className="py-2.5 px-3 font-bold text-slate-500 text-center w-16 border-r">난이도</th><th className="py-2.5 px-3 font-bold text-slate-500">풀이 전략</th></tr></thead>
+                                            <thead>
+                                                <tr className="bg-slate-50 border-b border-slate-200">
+                                                    <th className="py-2.5 px-3 font-bold text-slate-500 text-center w-12 border-r">문항번호</th>
+                                                    <th className="py-2.5 px-3 font-bold text-slate-500 text-center w-16 border-r">형태</th>
+                                                    <th className="py-2.5 px-3 font-bold text-slate-500 border-r w-32">출제단원</th>
+                                                    <th className="py-2.5 px-3 font-bold text-slate-500 border-r w-40">출제내용</th>
+                                                    <th className="py-2.5 px-3 font-bold text-slate-500 text-center w-16 border-r">난이도</th>
+                                                    <th className="py-2.5 px-3 font-bold text-slate-500">풀이 전략</th>
+                                                </tr>
+                                            </thead>
                                             <tbody className="divide-y divide-slate-100">
                                                 {examReportData.targetExams.map((q, idx) => (
                                                     <tr key={idx} className="hover:bg-slate-50 transition-colors">
                                                         <td className="py-2.5 px-3 text-center font-black text-slate-700 border-r">{q.qNum}</td>
                                                         <td className="py-2.5 px-3 text-center font-bold text-slate-600 border-r">{q.type || '객관식'}</td>
-                                                        <td className="py-2.5 px-3 border-r font-bold text-slate-800 break-keep">{q.cleanMajor} &gt; {q.minorUnit || '-'}</td>
-                                                        <td className="py-2.5 px-3 border-r"><MathText text={q.concept || q.aiConcept || '-'} className="font-bold text-slate-800 break-keep" /></td>
-                                                        <td className="py-2.5 px-3 text-center border-r"><span className={`px-1.5 py-0.5 rounded font-bold whitespace-nowrap ${q.numericDifficulty >= 7 ? 'text-white bg-red-400 border border-red-500' : (q.numericDifficulty >= 5 ? 'text-red-800 bg-red-100 border border-red-200' : (q.numericDifficulty <= 2 ? 'text-yellow-800 bg-yellow-100 border border-yellow-200' : 'text-lime-800 bg-lime-100 border border-lime-200'))}`}>{q.numericDifficulty || q.difficulty || '-'}</span></td>
-                                                        <td className="py-2.5 px-3 text-slate-700 font-medium break-keep leading-snug"><MathText text={q.aiStrategy || q.aiShortStrategy || '-'} className="" /></td>
+                                                        <td className="py-2.5 px-3 border-r font-bold text-slate-800 break-keep">
+                                                            {q.cleanMajor} &gt; {q.minorUnit || '-'}
+                                                        </td>
+                                                        <td className="py-2.5 px-3 border-r">
+                                                            <MathText text={q.concept || q.aiConcept || '-'} className="font-bold text-slate-800 break-keep" />
+                                                        </td>
+                                                        <td className="py-2.5 px-3 text-center border-r">
+                                                            <span className={`px-1.5 py-0.5 rounded font-bold whitespace-nowrap ${q.numericDifficulty >= 7 ? 'text-white bg-red-400 border border-red-500' : (q.numericDifficulty >= 5 ? 'text-red-800 bg-red-100 border border-red-200' : (q.numericDifficulty <= 2 ? 'text-yellow-800 bg-yellow-100 border border-yellow-200' : 'text-lime-800 bg-lime-100 border border-lime-200'))}`}>
+                                                                {q.numericDifficulty || q.difficulty || '-'}
+                                                            </span>
+                                                        </td>
+                                                        <td className="py-2.5 px-3 text-slate-700 font-medium break-keep leading-snug">
+                                                            <MathText text={q.aiStrategy || q.aiShortStrategy} className="" />
+                                                        </td>
                                                     </tr>
                                                 ))}
                                             </tbody>
@@ -2335,12 +2221,9 @@
             );
         }
 
-        const rootEl = document.getElementById('root');
-        if (ReactDOM.createRoot) {
-            ReactDOM.createRoot(rootEl).render(<App />);
-        } else {
-            ReactDOM.render(<App />, rootEl);
-        }
+        const urlParams = new URLSearchParams(window.location.search);
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
     </script>
 </body>
 </html>
