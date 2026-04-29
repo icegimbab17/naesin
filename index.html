@@ -1480,13 +1480,7 @@
                             let text = data.candidates[0].content.parts[0].text;
                             
                             let jsonResult = [];
-                            text = text.replace(/```json/g, '').replace(/```/g, '').trim();
-                            try {
-                                jsonResult = JSON.parse(text);
-                            } catch(e) {
-                                console.error("JSON 파싱 에러:", text);
-                                showToast("AI 응답을 JSON으로 변환하지 못했습니다.", "error");
-                            }
+                            try { jsonResult = JSON.parse(text); } catch(e) { console.error("JSON 파싱 에러"); }
 
                             const imgFileName = imageFiles[0].name.replace(/\.[^/.]+$/, "").replace(/_유형분석|유형분석/g, '').trim();
                             const parsedInfo = parseExamInfo(imgFileName);
