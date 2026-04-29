@@ -587,7 +587,7 @@
                                             <p className="text-[11px] font-bold text-slate-400 leading-none mb-1">
                                                 {data.comments.weak.includes('완벽함') || data.comments.weak.includes('우수함') || data.comments.weak.includes('양호함') ? '특이사항' : '보완 단원'}
                                             </p>
-                                            <p className={`text-[13px] font-black whitespace-normal break-keep leading-snug ${comments.weak.includes('완벽함') ? 'text-emerald-600' : 'text-slate-800'}`}>
+                                            <p className={`text-[13px] font-black whitespace-normal break-keep leading-snug ${data.comments.weak.includes('완벽함') ? 'text-emerald-600' : 'text-slate-800'}`}>
                                                 {data.comments.weak}
                                             </p>
                                         </div>
@@ -807,7 +807,7 @@
 
         function App() {
             // 🚨 서버 배포 시, 이 쌍따옴표 사이에 발급받으신 Google Gemini API 키를 넣어야 자동 분석이 작동합니다! 🚨
-            const apiKey = "";
+            const apiKey = "AIzaSyAe7oQVGQYm8UjXO_XBGcDYOpY8slM_1rg";
             
             const urlParams = new URLSearchParams(window.location.search);
             const reportParam = urlParams.get('report');
@@ -1407,7 +1407,7 @@
                             addedMediaCount++;
                         }
 
-                        let url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${currentApiKey}`;
+                        let url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${currentApiKey}`;
                         
                         // 🌟 치명적 문법 오류 완벽 방어: 1줄로 결합 및 줄바꿈 완전 제거 완료 🌟
                         const promptText = "첨부된 분석표 이미지와 시험지 PDF 원문을 분석하세요. 1. 이미지에서 각 문항의 '문제 번호(qNum)', '문항분류코드(code)', '배점(score)', '난이도(difficulty, 1~8)'를 추출하세요. (이미지에 단원 정보가 없다면 문항분류코드와 PDF의 문제 내용을 분석하여 중고등 수학의 어느 대단원, 소단원, 출제내용인지 스스로 판단하여 majorUnit, minorUnit, concept에 채워주세요). 2. 첨부된 시험지 PDF에서 각 문항 번호에 해당하는 '실제 문제 내용'을 파악하세요. 3. 파악한 실제 문제 내용을 바탕으로 해당 문제를 풀 때 반드시 알아야 할 '어려운 포인트(aiPoint)', '필요 개념(aiConcept)', '2~3단계 맞춤형 풀이 전략(aiStrategy)'을 구체적으로 작성하세요. 중요: 모든 수학 기호, 수식은 반드시 LaTeX 형식으로 작성하고 $ 또는 $$ 기호로 감싸주세요. 결과를 순수 JSON 배열 형태로만 반환하세요.";
@@ -1480,7 +1480,13 @@
                             let text = data.candidates[0].content.parts[0].text;
                             
                             let jsonResult = [];
-                            try { jsonResult = JSON.parse(text); } catch(e) { console.error("JSON 파싱 에러"); }
+                            text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+                            try {
+                                jsonResult = JSON.parse(text);
+                            } catch(e) {
+                                console.error("JSON 파싱 에러:", text);
+                                showToast("AI 응답을 JSON으로 변환하지 못했습니다.", "error");
+                            }
 
                             const imgFileName = imageFiles[0].name.replace(/\.[^/.]+$/, "").replace(/_유형분석|유형분석/g, '').trim();
                             const parsedInfo = parseExamInfo(imgFileName);
