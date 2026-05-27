@@ -1435,7 +1435,7 @@
                         } catch (e) { console.error("Firestore Save Error", e); }
                     }
 
-                    if (imageFiles.length > 0) {
+                    if (imageFiles.length > 0 || pdfFile) {
                         let pdfBase64 = null;
                         if (pdfFile) {
                             const fileUrl = URL.createObjectURL(pdfFile);
@@ -1446,7 +1446,7 @@
                                 reader.onload = (e) => resolve(e.target.result.split(',')[1]);
                                 reader.readAsDataURL(pdfFile);
                             });
-                        } else {
+                        } else if (imageFiles.length > 0) {
                             const fileUrl = URL.createObjectURL(imageFiles[0]);
                             setExamMedia({ url: fileUrl, isImage: true }); 
                             addedMediaCount++;
@@ -1454,8 +1454,8 @@
 
                         let url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
                         
-                        // 🌟 프롬프트 업데이트: "정답(answer)" 추출 명령 추가 🌟
-                        const promptText = "첨부된 분석표 이미지와 시험지 PDF 원문을 분석하세요. 1. 이미지에서 각 문항의 '문제 번호(qNum)', '문항분류코드(code)', '배점(score)', '난이도(difficulty, 1~8)'를 추출하세요. (이미지에 단원 정보가 없다면 문항분류코드와 PDF의 문제 내용을 분석하여 중고등 수학의 어느 대단원, 소단원, 출제내용인지 스스로 판단하여 majorUnit, minorUnit, concept에 채워주세요). 2. 첨부된 시험지 PDF에서 각 문항 번호에 해당하는 '실제 문제 내용'과 **'정답(answer)'**을 정확히 파악하세요. 3. 파악한 내용을 바탕으로 해당 문제를 풀 때 필요한 '어려운 포인트(aiPoint)', '필요 개념(aiConcept)', '맞춤형 풀이 전략(aiStrategy)'을 구체적으로 작성하세요. 중요: 수학 기호는 반드시 LaTeX 형식($ 또는 $$)으로 감싸고, 결과를 순수 JSON 배열 형태로 반환하세요.";
+                        // 🌟 프롬프트 업데이트: "정답(answer)" 추출 명령 및 스키마 안정성 강화 🌟
+                        const promptText = "첨부된 분석표 이미지와 시험지 PDF 원문을 분석하세요. 1. 이미지나 PDF에서 각 문항의 '문제 번호(qNum)', '문항분류코드(code)', '배점(score)', '난이도(difficulty, 1~8)'를 추출하세요. (이미지에 단원 정보가 없다면 문항분류코드와 PDF의 문제 내용을 분석하여 중고등 수학의 어느 대단원, 소단원, 출제내용인지 스스로 판단하여 majorUnit, minorUnit, concept에 채워주세요). 2. 첨부된 시험지 PDF에서 각 문항 번호에 해당하는 '실제 문제 내용'과 **'정답(answer)'**을 정확히 파악하세요. 3. 파악한 내용을 바탕으로 해당 문제를 풀 때 필요한 '어려운 포인트(aiPoint)', '필요 개념(aiConcept)', '맞춤형 풀이 전략(aiStrategy)'을 구체적으로 작성하세요. 중요: 수학 기호는 반드시 LaTeX 형식($ 또는 $$)으로 감싸고, 결과를 순수 JSON 객체(키: 'results') 형태로 반환하세요.";
                         const parts = [ { text: promptText } ];
 
                         for(const file of imageFiles) {
@@ -1471,35 +1471,40 @@
                             parts.push({ inlineData: { mimeType: "application/pdf", data: pdfBase64 } });
                         }
 
-                        // 🌟 JSON 스키마 업데이트: answer 필드 추가 🌟
+                        // 🌟 JSON 스키마 업데이트: 최상단을 OBJECT로 변경하여 오류 완벽 차단 🌟
                         const payload = {
-                            contents: [{ parts }],
+                            contents: [{ role: "user", parts }],
                             generationConfig: { 
                                 responseMimeType: "application/json",
                                 responseSchema: {
-                                    type: "ARRAY",
-                                    items: {
-                                        type: "OBJECT",
-                                        properties: {
-                                            qNum: { type: "STRING", description: "문제 번호" },
-                                            code: { type: "STRING", description: "문항분류코드" },
-                                            score: { type: "STRING", description: "배점" },
-                                            difficulty: { type: "STRING", description: "난이도 숫자 1~8" },
-                                            answer: { type: "STRING", description: "해당 문항의 정답 (객관식은 번호, 주관식은 단답형 수식/숫자)" },
-                                            majorUnit: { type: "STRING", description: "대단원 이름" },
-                                            minorUnit: { type: "STRING", description: "소단원 이름" },
-                                            concept: { type: "STRING", description: "출제내용" },
-                                            aiPoint: { type: "STRING", description: "LaTeX 형식을 적용한 어려운 포인트" },
-                                            aiConcept: { type: "STRING", description: "LaTeX 형식을 적용한 필요 개념" },
-                                            aiStrategy: { type: "STRING", description: "LaTeX 형식을 적용한 단계별 풀이 전략" }
-                                        },
-                                        required: ["qNum", "code", "score", "difficulty", "answer", "aiPoint", "aiConcept", "aiStrategy"]
+                                    type: "OBJECT",
+                                    properties: {
+                                        results: {
+                                            type: "ARRAY",
+                                            items: {
+                                                type: "OBJECT",
+                                                properties: {
+                                                    qNum: { type: "STRING", description: "문제 번호" },
+                                                    code: { type: "STRING", description: "문항분류코드" },
+                                                    score: { type: "STRING", description: "배점" },
+                                                    difficulty: { type: "STRING", description: "난이도 숫자 1~8" },
+                                                    answer: { type: "STRING", description: "해당 문항의 정답 (객관식은 번호, 주관식은 단답형 수식/숫자)" },
+                                                    majorUnit: { type: "STRING", description: "대단원 이름" },
+                                                    minorUnit: { type: "STRING", description: "소단원 이름" },
+                                                    concept: { type: "STRING", description: "출제내용" },
+                                                    aiPoint: { type: "STRING", description: "LaTeX 형식을 적용한 어려운 포인트" },
+                                                    aiConcept: { type: "STRING", description: "LaTeX 형식을 적용한 필요 개념" },
+                                                    aiStrategy: { type: "STRING", description: "LaTeX 형식을 적용한 단계별 풀이 전략" }
+                                                },
+                                                required: ["qNum", "score", "difficulty", "answer", "aiPoint", "aiConcept", "aiStrategy"]
+                                            }
+                                        }
                                     }
                                 }
                             }
                         };
 
-                        let retries = 3;
+                        let retries = 5;
                         let delay = 1000;
                         let data = null;
                         
@@ -1508,8 +1513,6 @@
                                 const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                                 
                                 if (!response.ok) {
-                                    const errTxt = await response.text();
-                                    console.error("API Response Fail", errTxt);
                                     throw new Error(`API Fail: ${response.status}`);
                                 }
                                 
@@ -1526,11 +1529,20 @@
                         if(data && data.candidates && data.candidates[0].content) {
                             let text = data.candidates[0].content.parts[0].text;
                             
+                            // 🌟 마크다운 제거 로직 부활 🌟
+                            text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+                            
                             let jsonResult = [];
-                            try { jsonResult = JSON.parse(text); } catch(e) { console.error("JSON 파싱 에러"); }
+                            try { 
+                                const parsed = JSON.parse(text); 
+                                jsonResult = parsed.results || parsed || [];
+                                if (!Array.isArray(jsonResult)) jsonResult = [];
+                            } catch(e) { 
+                                console.error("JSON 파싱 에러", e); 
+                            }
 
-                            const imgFileName = imageFiles[0].name.replace(/\.[^/.]+$/, "").replace(/_유형분석|유형분석/g, '').trim();
-                            const parsedInfo = parseExamInfo(imgFileName);
+                            const baseFileName = (pdfFile ? pdfFile.name : (imageFiles[0] ? imageFiles[0].name : '기출분석')).replace(/\.[^/.]+$/, "").replace(/_유형분석|유형분석/g, '').trim();
+                            const parsedInfo = parseExamInfo(baseFileName);
 
                             const newExamsFromImg = jsonResult.map(res => {
                                 const rawCode = res.code ? String(res.code) : '';
