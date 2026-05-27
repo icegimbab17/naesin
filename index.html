@@ -1557,22 +1557,24 @@
                         return s;
                     });
 
-                    if (addedExams.length > 0) {
-                        setExams(prev => [...prev.filter(p => !addedExams.some(n => n.period === p.period && n.qNum === p.qNum)), ...addedExams]);
-                        addedExams.forEach(ex => {
-                            db.collection('artifacts').doc(appId).collection('public').doc('data').collection('exams').doc(`${ex.period}_${ex.qNum}`).set(ex).catch(e => console.warn(e));
-                        });
-                        
-                        const justAdded = addedExams[0];
-                        const info = parseExamInfo(justAdded.fileName || justAdded.period);
-                        
-                        setFilters(prev => ({
-                            ...prev,
-                            examYear: info.year !== "미상" ? info.year : '',
-                            examSchoolExam: info.schoolExamDisplay !== "분석 시험" ? info.schoolExamDisplay : ''
-                        }));
-                        setViewMode('exam'); 
-                    }
+                    if (addedExams.forEach(ex => {
+    // [디버깅] DB 저장 직전 데이터 상태 확인
+    console.log(`=== [문항 ${ex.qNum}번] DB 저장 시도 ===`, ex);
+    
+    // undefined 값 필터링 (Firebase 에러 방지)
+    const safeEx = JSON.parse(JSON.stringify(ex, (key, value) => 
+        value === undefined ? null : value
+    ));
+
+    db.collection('artifacts').doc(appId).collection('public').doc('data').collection('exams').doc(`${ex.period}_${ex.qNum}`)
+      .set(safeEx)
+      .then(() => {
+          console.log(`✅ [문항 ${ex.qNum}번] DB 저장 성공!`);
+      })
+      .catch(e => {
+          console.error(`❌ [문항 ${ex.qNum}번] DB 저장 실패:`, e);
+      });
+});
 
                     if (addedStudents.length > 0) {
                         setStudents(prev => [...prev.filter(p => !addedStudents.some(n => n.name === p.name && n.period === p.period)), ...addedStudents]);
