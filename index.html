@@ -17,7 +17,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
 
-    <!-- KaTeX 수식 렌더링 라이브러리 추가 -->
+    <!-- 🌟 KaTeX 수식 렌더링 라이브러리 추가 🌟 -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js"></script>
@@ -632,206 +632,9 @@
             );
         };
 
-        // --- 📊 기출 분석 전용 뷰 컴포넌트 ---
-        const ExamAnalysisView = ({ data }) => {
-            const [questionImages, setQuestionImages] = useState({});
-
-            const handleImageUpload = (e, qNum) => {
-                const file = e.target.files[0];
-                if (file) {
-                    const reader = new FileReader();
-                    reader.onload = (event) => {
-                        setQuestionImages(prev => ({ ...prev, [qNum]: event.target.result }));
-                    };
-                    reader.readAsDataURL(file);
-                }
-            };
-
-            const formattedTitleElements = useMemo(() => {
-                const parts = [data.year !== "미상" ? data.year : "", data.schoolExamDisplay].filter(Boolean);
-                if (parts.length > 0) {
-                    return (
-                        <h1 className="text-[26px] font-black text-slate-900 leading-tight break-keep">
-                            <span className="text-orange-600 mr-2">{parts.join(' ')}</span>분석
-                        </h1>
-                    );
-                }
-
-                return (
-                    <h1 className="text-[26px] font-black text-slate-900 leading-tight break-keep">
-                        <span className="text-orange-600 mr-2">{data.fileName}</span>분석
-                    </h1>
-                );
-            }, [data]);
-
-            if (!data) return <div className="p-8 text-center h-screen flex items-center justify-center font-bold text-slate-500">기출 데이터를 불러올 수 없습니다. 시험을 먼저 선택해주세요.</div>;
-
-            return (
-                <div className="pt-8 no-print:bg-slate-100 font-sans">
-                    <div className="a4-page bg-white print-page-auto mb-8 relative">
-                        <div className="border-b-4 border-orange-500 pb-4 mb-6 flex justify-between items-end">
-                            <div>
-                                <div className="text-orange-500 font-black text-xs tracking-widest mb-1 uppercase tracking-tighter">Exam Analysis Report</div>
-                                {formattedTitleElements}
-                            </div>
-                            <div className="text-right">
-                                <p className="text-sm text-slate-500 font-bold mb-1 uppercase tracking-tighter">Total Questions</p>
-                                <p className="text-xl font-black text-slate-800 bg-orange-50 px-4 py-1 rounded-lg shadow-sm border border-orange-100">{data.targetExams.length}문항</p>
-                            </div>
-                        </div>
-
-                        <div className="mb-8 break-inside-avoid">
-                            <h2 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2 border-l-4 border-orange-500 pl-3">1. 기본 정보</h2>
-                            <div className="bg-slate-50 rounded-2xl border border-slate-200 p-5 shadow-sm space-y-5">
-                                <div>
-                                    <h3 className="text-sm font-bold text-slate-500 mb-2 flex items-center gap-1"><Icon name="book-open" size={16}/> 시험 범위</h3>
-                                    <div className="flex flex-wrap gap-2">
-                                        {/* 🌟 시험범위 무조건 순수 대단원만 나오게 됨 */}
-                                        {data.scopes.map((scope, idx) => (
-                                            <span key={idx} className="bg-white border border-slate-200 text-slate-700 px-3 py-1.5 rounded-lg text-[13px] font-bold shadow-sm">{scope}</span>
-                                        ))}
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-2 gap-8 print:gap-4">
-                                    <div>
-                                        <h3 className="text-sm font-bold text-slate-500 mb-3 flex items-center gap-1"><Icon name="pie-chart" size={16}/> 단원별 문항 분포</h3>
-                                        <HorizontalBarChart data={data.unitDistribution.map(u => ({...u, correct: u.count}))} color="#f97316" isExamView={true} />
-                                    </div>
-                                    <div>
-                                        <h3 className="text-sm font-bold text-slate-500 mb-3 flex items-center gap-1"><Icon name="bar-chart" size={16}/> 난이도별 문항 분포 (1~8단계)</h3>
-                                        <HorizontalBarChart data={data.diffLevelsList} isExamView={true} />
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* 🌟 2. 종합 출제 경향 및 학습 전략 보고서 🌟 */}
-                        <div className="mb-8 break-inside-avoid">
-                            <h2 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2 border-l-4 border-orange-500 pl-3">2. 종합 출제 경향 및 학습 전략</h2>
-                            
-                            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
-                                <div>
-                                    <h3 className="text-[15px] font-black text-indigo-700 mb-2">📝 1. 시험 총평</h3>
-                                    <p className="text-[14px] font-bold text-slate-800 mb-1 leading-snug">{data.reportContent.summaryLine}</p>
-                                    <p className="text-[13px] text-slate-600 leading-relaxed break-keep whitespace-pre-wrap">{data.reportContent.summaryDetail}</p>
-                                </div>
-
-                                <div>
-                                    <h3 className="text-[15px] font-black text-emerald-700 mb-3">🎯 2. 단원별 핵심 포인트 및 학습 전략</h3>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        {data.reportContent.strategyUnits.map((u, i) => (
-                                            <div key={i} className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                                                <p className="font-black text-[14px] text-slate-800 mb-2">📌 {u.name} <span className="text-[11px] text-slate-500 font-bold ml-1">(총 {u.count}문항 / 최고난이도 {u.maxDiff})</span></p>
-                                                <div className="text-[13px] text-slate-700 space-y-2 break-keep">
-                                                    <div><strong className="text-emerald-600 block mb-0.5">출제경향:</strong> {u.trend}</div>
-                                                    <div><strong className="text-indigo-600 block mb-0.5">대비전략:</strong> {u.strategy}</div>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* 🌟 3. 상대적 고난도 문항 심층 분석 (선생님 요청대로 원본 회색 카메라 뷰어 복구) 🌟 */}
-                        {data.reportContent.hardQuestionsList.length > 0 && (
-                            <div className="mb-8 break-inside-avoid">
-                                <h2 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2 border-l-4 border-orange-500 pl-3">3. 상대적 고난도 문항 심층 분석</h2>
-                                <div className="grid grid-cols-2 gap-4 print:gap-3">
-                                    {data.reportContent.hardQuestionsList.map((q, idx) => (
-                                        <div key={idx} className="bg-white border border-orange-200 rounded-2xl shadow-sm relative overflow-hidden flex flex-col">
-                                            <div className="absolute top-0 right-0 bg-orange-500 text-white text-[10px] font-bold px-3 py-1 rounded-bl-lg z-10">고난도 문항</div>
-                                            
-                                            {/* 🌟 이 부분이 선생님이 원하시던 원본 카메라 모양 업로드 칸입니다 🌟 */}
-                                            <label className="bg-slate-50 w-full min-h-[150px] flex flex-col items-center justify-center border-b border-slate-200 cursor-pointer hover:bg-slate-100 transition-colors relative group">
-                                                <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, q.qNum)} />
-                                                {questionImages[q.qNum] ? (
-                                                    <img src={questionImages[q.qNum]} alt={`문항 ${q.qNum}`} className="max-w-full max-h-[300px] object-contain p-2" />
-                                                ) : (
-                                                    <div className="flex flex-col items-center text-slate-400 group-hover:text-orange-500 transition-colors px-4 text-center">
-                                                        <Icon name="camera" size={32} className="mb-2 opacity-50 group-hover:opacity-100" />
-                                                        <span className="font-bold text-sm">이곳을 클릭해 핵심 문항 이미지를 첨부하세요</span>
-                                                    </div>
-                                                )}
-                                            </label>
-
-                                            <div className="p-4 flex flex-col flex-1">
-                                                <h3 className="text-[16px] font-black text-slate-800 mb-3 flex items-center gap-2">
-                                                    <div className="w-6 h-6 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center text-sm shrink-0">{q.qNum}</div>
-                                                    <MathText text={q.concept} className="truncate text-sm font-bold" />
-                                                </h3>
-                                                <div className="space-y-3 flex-1 flex flex-col justify-end">
-                                                    <div>
-                                                        <p className="text-[11px] font-bold text-orange-500 mb-0.5">🎯 출제의도</p>
-                                                        <MathText text={q.intent} className="text-[13px] text-slate-700 font-medium break-keep leading-tight" />
-                                                    </div>
-                                                    <div className="bg-orange-50 p-3 rounded-lg border border-orange-100 mt-2">
-                                                        <p className="text-[11px] font-bold text-orange-600 mb-1">💡 공략 (해결전략)</p>
-                                                        <MathText text={q.strategy} className="text-[12px] text-slate-800 font-bold leading-relaxed break-keep" />
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-                        
-                        <div className="absolute bottom-10 print:bottom-6 left-0 right-0 text-center text-[10px] text-slate-300 font-bold tracking-[0.2em] uppercase font-sans">
-                            Exam Analysis Report — Page 1
-                        </div>
-                    </div>
-                    
-                    <div className="a4-page bg-white print-page-auto relative">
-                        <div className="mb-4">
-                            <h2 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2 border-l-4 border-orange-500 pl-3">4. 문항별 상세 분석</h2>
-                            <div className="overflow-x-auto rounded-xl border border-slate-200">
-                                <table className="w-full text-left border-collapse text-[12px]">
-                                    <thead>
-                                        <tr className="bg-slate-50 border-b border-slate-200">
-                                            <th className="py-2.5 px-3 font-bold text-slate-500 text-center w-12 border-r">문항번호</th>
-                                            <th className="py-2.5 px-3 font-bold text-slate-500 text-center w-16 border-r">형태</th>
-                                            <th className="py-2.5 px-3 font-bold text-slate-500 border-r w-32">출제단원</th>
-                                            <th className="py-2.5 px-3 font-bold text-slate-500 border-r w-40">출제내용</th>
-                                            <th className="py-2.5 px-3 font-bold text-slate-500 text-center w-16 border-r">난이도</th>
-                                            <th className="py-2.5 px-3 font-bold text-indigo-600 text-center w-16 border-r bg-indigo-50/50">정답</th>
-                                            <th className="py-2.5 px-3 font-bold text-slate-500">풀이 전략</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-100">
-                                        {data.targetExams.map((q, idx) => (
-                                            <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                                                <td className="py-2.5 px-3 text-center font-black text-slate-700 border-r">{q.qNum}</td>
-                                                <td className="py-2.5 px-3 text-center font-bold text-slate-600 border-r">{q.type || '객관식'}</td>
-                                                <td className="py-2.5 px-3 border-r font-bold text-slate-800 break-keep">
-                                                    {q.cleanMajor} &gt; {q.minorUnit || '-'}
-                                                </td>
-                                                <td className="py-2.5 px-3 border-r">
-                                                    <MathText text={q.concept || q.aiConcept || '-'} className="font-bold text-slate-800 break-keep" />
-                                                </td>
-                                                <td className="py-2.5 px-3 text-center border-r">
-                                                    <span className={`px-1.5 py-0.5 rounded font-bold whitespace-nowrap ${q.numericDifficulty >= 7 ? 'text-white bg-red-400 border border-red-500' : (q.numericDifficulty >= 5 ? 'text-red-800 bg-red-100 border border-red-200' : (q.numericDifficulty <= 2 ? 'text-yellow-800 bg-yellow-100 border border-yellow-200' : 'text-lime-800 bg-lime-100 border border-lime-200'))}`}>
-                                                        {q.numericDifficulty || q.difficulty || '-'}
-                                                    </span>
-                                                </td>
-                                                <td className="py-2.5 px-3 text-center font-black text-indigo-600 border-r bg-indigo-50/30">{q.answer || '-'}</td>
-                                                <td className="py-2.5 px-3 text-slate-700 font-medium break-keep leading-snug">
-                                                    <MathText text={q.aiStrategy || q.aiShortStrategy} className="" />
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            );
-        }
-
         function App() {
-            // 🚨 서버 배포 시, 이 쌍따옴표 사이에 선생님의 Gemini API 키를 넣어야 자동 분석이 작동합니다! 🚨
-            const apiKey = "";
+            // 🚨 서버 배포 시 이 위치에 API Key를 넣으면 작동합니다. (현재 환경에서는 비워두셔도 됩니다)
+            const apiKey = ""; 
             
             const urlParams = new URLSearchParams(window.location.search);
             const reportParam = urlParams.get('report');
@@ -859,7 +662,7 @@
 
             const showToast = (message, type = 'info') => {
                 setToast({ show: true, message, type });
-                setTimeout(() => setToast({ show: false, message: '', type: 'info' }), 3500);
+                setTimeout(() => setToast({ show: false, message: '', type: 'info' }), 4500);
             };
 
             const requestConfirm = (message, onConfirm) => { setConfirmModal({ show: true, message, onConfirm }); };
@@ -970,13 +773,13 @@
                 } else if (viewMode === 'exam') {
                     if (!filters.examYear && optionsData.examYears.length > 0) {
                         setFilters(p => ({ ...p, examYear: optionsData.examYears[optionsData.examYears.length - 1] }));
-                    } else if (optionsData.examSchoolExams.length > 0 && (!filters.examSchoolExam || !optionsData.examSchoolExams.includes(filters.examSchoolExam))) {
+                    } else if (optionsData.examSchoolExams.length > 0 && (!filters.examSchoolExams.includes(filters.examSchoolExam))) {
                         setFilters(p => ({ ...p, examSchoolExam: optionsData.examSchoolExams[0] }));
                     }
                 }
             }, [optionsData, viewMode]);
 
-            // 🌟 자동 채점 엔진 (수정됨) 🌟
+            // 자동 채점 엔진
             const analysisData = useMemo(() => {
                 if (viewMode !== 'student' || !filters.studentCourse || !filters.studentExam || !filters.studentName) return null;
                 
@@ -996,7 +799,6 @@
                     let earnedScore = 0;
                     let status = 'X';
                     
-                    // DB에 저장된 AI 추출 정답과 학생이 입력한 답안
                     const correctAns = String(ex.answer || '').trim();
                     const stuAnsStr = String(studentAns || '').trim();
 
@@ -1005,10 +807,8 @@
                     } else if (stuAnsStr === 'X' || stuAnsStr === '오답' || !stuAnsStr) {
                         earnedScore = 0; status = 'X';
                     } else if (correctAns !== '' && stuAnsStr === correctAns) {
-                        // ✨ AI 추출 정답과 학생이 제출한 번호(또는 답)가 일치하면 정답 처리!
                         earnedScore = fullScore; status = 'O';
                     } else if (typeof studentAns === 'object' && studentAns !== null) {
-                        // 부분 점수 처리 (엑셀에서 부분점수를 입력한 경우)
                         const ratio = studentAns.studentFull > 0 ? (studentAns.earned / studentAns.studentFull) : 0;
                         earnedScore = fullScore * ratio;
                         earnedScore = Math.round(earnedScore * 10) / 10; 
@@ -1016,7 +816,6 @@
                         else if (earnedScore > 0) { status = '△'; } 
                         else { status = 'X'; }
                     } else {
-                        // 학생이 숫자를 입력했는데 정답이 없어서 매칭할 수 없는 경우 (기존 호환성)
                         const numAns = parseFloat(stuAnsStr);
                         if (!isNaN(numAns) && correctAns === '') {
                             earnedScore = numAns;
@@ -1024,7 +823,6 @@
                             else if (earnedScore > 0) { status = '△'; } 
                             else { status = 'X'; }
                         } else {
-                            // 정답 데이터가 있는데 학생 답과 불일치하면 오답 처리
                             earnedScore = 0; status = 'X';
                         }
                     }
@@ -1221,6 +1019,47 @@
 
             const comments = useMemo(() => generateAIComment(analysisData), [analysisData]);
 
+            // 🌟 1단계: API 통신 헬퍼 (지수 백오프 타임아웃 방어)
+            const callGeminiStaged = async (parts, schemaObj, stageMsg) => {
+                showToast(stageMsg, "info");
+                let url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+                const payload = {
+                    contents: [{ role: "user", parts }],
+                    generationConfig: {
+                        responseMimeType: "application/json",
+                        responseSchema: schemaObj
+                    }
+                };
+
+                let retries = 3;
+                let delay = 2000;
+                while(retries > 0) {
+                    try {
+                        const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                        if (!response.ok) {
+                            const errTxt = await response.text();
+                            console.error("API Error:", errTxt);
+                            throw new Error(`API Fail: ${response.status}`);
+                        }
+                        const data = await response.json();
+                        if(data && data.candidates && data.candidates[0].content) {
+                            let text = data.candidates[0].content.parts[0].text;
+                            text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+                            const parsed = JSON.parse(text);
+                            return parsed.results || parsed || [];
+                        }
+                        return [];
+                    } catch(e) {
+                        retries--;
+                        if(retries === 0) throw e;
+                        await new Promise(r => setTimeout(r, delay));
+                        delay *= 2;
+                    }
+                }
+                return [];
+            };
+
+            // 🌟 2단계: 파일 업로드 메인 함수 (단계별 파이프라인 결합)
             const handleFileUpload = async (e) => {
                 const files = Array.from(e.target.files);
                 if (files.length === 0) return;
@@ -1236,9 +1075,9 @@
                 const otherFiles = files.filter(f => !f.type.startsWith('image/') && !f.name.toLowerCase().endsWith('.pdf'));
 
                 setIsGenerating(true);
-                showToast("데이터를 처리 중입니다. 파일 크기에 따라 잠시 소요될 수 있습니다...", "info");
 
                 try {
+                    // (1) 엑셀 파일 처리 (마스터DB 및 학생 데이터) - 기존 로직 유지
                     for (const file of otherFiles) {
                         if (file.name.toLowerCase().endsWith('.csv') || file.name.toLowerCase().endsWith('.tsv') || file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.xls')) {
                             await new Promise((resolve) => {
@@ -1407,7 +1246,6 @@
                                                             const qNumStr = String(k).replace(/[^0-9]/g, '');
                                                             if (qNumStr) {
                                                                 const qNum = parseInt(qNumStr);
-                                                                // ✨ 학생이 적은 답안(번호, 주관식 단답 등)을 저장
                                                                 if (qNum > 0 && qNum <= 100) responses[qNum] = String(row[k]).trim().toUpperCase();
                                                             }
                                                         });
@@ -1435,6 +1273,7 @@
                         } catch (e) { console.error("Firestore Save Error", e); }
                     }
 
+                    // (2) 🌟 이미지 + PDF 통합 파이프라인 (타임아웃 방어 적용) 🌟
                     if (imageFiles.length > 0 || pdfFile) {
                         let pdfBase64 = null;
                         if (pdfFile) {
@@ -1448,109 +1287,98 @@
                             });
                         } else if (imageFiles.length > 0) {
                             const fileUrl = URL.createObjectURL(imageFiles[0]);
-                            setExamMedia({ url: fileUrl, isImage: true }); 
+                            setExamMedia({ url: fileUrl, isImage: true });
                             addedMediaCount++;
                         }
 
-                        let url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
-                        
-                        // 🌟 프롬프트 업데이트: "정답(answer)" 추출 명령 및 스키마 안정성 강화 🌟
-                        const promptText = "첨부된 분석표 이미지와 시험지 PDF 원문을 분석하세요. 1. 이미지나 PDF에서 각 문항의 '문제 번호(qNum)', '문항분류코드(code)', '배점(score)', '난이도(difficulty, 1~8)'를 추출하세요. (이미지에 단원 정보가 없다면 문항분류코드와 PDF의 문제 내용을 분석하여 중고등 수학의 어느 대단원, 소단원, 출제내용인지 스스로 판단하여 majorUnit, minorUnit, concept에 채워주세요). 2. 첨부된 시험지 PDF에서 각 문항 번호에 해당하는 '실제 문제 내용'과 **'정답(answer)'**을 정확히 파악하세요. 3. 파악한 내용을 바탕으로 해당 문제를 풀 때 필요한 '어려운 포인트(aiPoint)', '필요 개념(aiConcept)', '맞춤형 풀이 전략(aiStrategy)'을 구체적으로 작성하세요. 중요: 수학 기호는 반드시 LaTeX 형식($ 또는 $$)으로 감싸고, 결과를 순수 JSON 객체(키: 'results') 형태로 반환하세요.";
-                        const parts = [ { text: promptText } ];
+                        let jsonResult = [];
+                        let baseData = [];
 
-                        for(const file of imageFiles) {
-                            const base64 = await new Promise((resolve) => {
-                                const reader = new FileReader();
-                                reader.onload = (e) => resolve(e.target.result.split(',')[1]);
-                                reader.readAsDataURL(file);
-                            });
-                            parts.push({ inlineData: { mimeType: file.type, data: base64 } });
-                        }
+                        // [STEP 1] 가벼운 이미지 분석으로 메타데이터 우선 추출
+                        if (imageFiles.length > 0) {
+                            const prompt1 = "첨부된 분석표 이미지에서 각 행의 데이터를 추출하세요. 1. 문제 번호(qNum), 2. 문항분류코드(code), 3. 배점(score), 4. 난이도(difficulty)를 파악하세요. 결과를 순수 JSON 객체(키: 'results') 형태로 반환하세요.";
+                            const parts1 = [{ text: prompt1 }];
+                            for(const file of imageFiles) {
+                                const base64 = await new Promise((resolve) => {
+                                    const reader = new FileReader();
+                                    reader.onload = (e) => resolve(e.target.result.split(',')[1]);
+                                    reader.readAsDataURL(file);
+                                });
+                                parts1.push({ inlineData: { mimeType: file.type, data: base64 } });
+                            }
 
-                        if (pdfBase64) {
-                            parts.push({ inlineData: { mimeType: "application/pdf", data: pdfBase64 } });
-                        }
-
-                        // 🌟 JSON 스키마 업데이트: 최상단을 OBJECT로 변경하여 오류 완벽 차단 🌟
-                        const payload = {
-                            contents: [{ role: "user", parts }],
-                            generationConfig: { 
-                                responseMimeType: "application/json",
-                                responseSchema: {
-                                    type: "OBJECT",
-                                    properties: {
-                                        results: {
-                                            type: "ARRAY",
-                                            items: {
-                                                type: "OBJECT",
-                                                properties: {
-                                                    qNum: { type: "STRING", description: "문제 번호" },
-                                                    code: { type: "STRING", description: "문항분류코드" },
-                                                    score: { type: "STRING", description: "배점" },
-                                                    difficulty: { type: "STRING", description: "난이도 숫자 1~8" },
-                                                    answer: { type: "STRING", description: "해당 문항의 정답 (객관식은 번호, 주관식은 단답형 수식/숫자)" },
-                                                    majorUnit: { type: "STRING", description: "대단원 이름" },
-                                                    minorUnit: { type: "STRING", description: "소단원 이름" },
-                                                    concept: { type: "STRING", description: "출제내용" },
-                                                    aiPoint: { type: "STRING", description: "LaTeX 형식을 적용한 어려운 포인트" },
-                                                    aiConcept: { type: "STRING", description: "LaTeX 형식을 적용한 필요 개념" },
-                                                    aiStrategy: { type: "STRING", description: "LaTeX 형식을 적용한 단계별 풀이 전략" }
-                                                },
-                                                required: ["qNum", "score", "difficulty", "answer", "aiPoint", "aiConcept", "aiStrategy"]
+                            const schema1 = {
+                                type: "OBJECT",
+                                properties: {
+                                    results: {
+                                        type: "ARRAY",
+                                        items: {
+                                            type: "OBJECT",
+                                            properties: {
+                                                qNum: { type: "STRING" },
+                                                code: { type: "STRING" },
+                                                score: { type: "STRING" },
+                                                difficulty: { type: "STRING" }
                                             }
                                         }
                                     }
                                 }
-                            }
-                        };
-
-                        let retries = 5;
-                        let delay = 1000;
-                        let data = null;
-                        
-                        while(retries > 0) {
-                            try {
-                                const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-                                
-                                if (!response.ok) {
-                                    throw new Error(`API Fail: ${response.status}`);
-                                }
-                                
-                                data = await response.json();
-                                break;
-                            } catch(e) {
-                                retries--;
-                                if(retries === 0) throw e;
-                                await new Promise(r => setTimeout(r, delay));
-                                delay *= 2;
-                            }
+                            };
+                            baseData = await callGeminiStaged(parts1, schema1, "1/2단계: 분석표에서 문항별 기본 정보(배점, 난이도 등) 추출 중...");
                         }
 
-                        if(data && data.candidates && data.candidates[0].content) {
-                            let text = data.candidates[0].content.parts[0].text;
-                            
-                            // 🌟 마크다운 제거 로직 부활 🌟
-                            text = text.replace(/```json/g, '').replace(/```/g, '').trim();
-                            
-                            let jsonResult = [];
-                            try { 
-                                const parsed = JSON.parse(text); 
-                                jsonResult = parsed.results || parsed || [];
-                                if (!Array.isArray(jsonResult)) jsonResult = [];
-                            } catch(e) { 
-                                console.error("JSON 파싱 에러", e); 
-                            }
+                        // [STEP 2] 무거운 PDF 분석으로 본문/정답 추출 및 병합
+                        if (pdfFile) {
+                            const prompt2 = "첨부된 시험지 PDF 원문을 분석하세요. 각 문항 번호(qNum)에 해당하는 1. '정답(answer)' (객관식은 번호, 주관식은 단답/숫자형), 2. 출제내용(concept), 3. 어려운 포인트(aiPoint), 4. 맞춤형 풀이 전략(aiStrategy)을 작성하세요. 모든 수학 기호는 반드시 LaTeX($ 또는 $$)로 감싸고, 결과를 순수 JSON 객체(키: 'results') 형태로 반환하세요.";
+                            const parts2 = [{ text: prompt2 }];
+                            parts2.push({ inlineData: { mimeType: "application/pdf", data: pdfBase64 } });
 
+                            const schema2 = {
+                                type: "OBJECT",
+                                properties: {
+                                    results: {
+                                        type: "ARRAY",
+                                        items: {
+                                            type: "OBJECT",
+                                            properties: {
+                                                qNum: { type: "STRING" },
+                                                answer: { type: "STRING", description: "정답" },
+                                                concept: { type: "STRING" },
+                                                majorUnit: { type: "STRING" },
+                                                minorUnit: { type: "STRING" },
+                                                aiPoint: { type: "STRING" },
+                                                aiConcept: { type: "STRING" },
+                                                aiStrategy: { type: "STRING" }
+                                            }
+                                        }
+                                    }
+                                }
+                            };
+                            
+                            const pdfData = await callGeminiStaged(parts2, schema2, "2/2단계: 시험지 PDF 정밀 분석 중 (정답/풀이전략 매칭 - 최대 1~2분 소요)...");
+
+                            // qNum 기준으로 Map 병합 (숫자로 파싱하여 "01"과 "1" 매칭)
+                            const map = new Map();
+                            [...baseData, ...pdfData].forEach(item => {
+                                const key = parseInt(String(item.qNum).replace(/[^0-9]/g, '')) || item.qNum;
+                                const existing = map.get(key) || {};
+                                map.set(key, { ...existing, ...item, qNum: key });
+                            });
+                            jsonResult = Array.from(map.values());
+                        } else {
+                            jsonResult = baseData;
+                        }
+
+                        if (jsonResult.length > 0) {
                             const baseFileName = (pdfFile ? pdfFile.name : (imageFiles[0] ? imageFiles[0].name : '기출분석')).replace(/\.[^/.]+$/, "").replace(/_유형분석|유형분석/g, '').trim();
                             const parsedInfo = parseExamInfo(baseFileName);
 
                             const newExamsFromImg = jsonResult.map(res => {
                                 const rawCode = res.code ? String(res.code) : '';
                                 let normCode = normalizeCode(rawCode);
-
                                 const mapped = currentMasterDB[normCode] || {};
 
-                                const major = mapped.major || res.majorUnit || '미분류 단원';
+                                const major = mapped.major || res.majorUnit || res.concept || '미분류 단원';
                                 const minor = mapped.sub || mapped.minor || res.minorUnit || '분류확인필요';
                                 const conceptStr = mapped.concept || res.concept || rawCode || '분석불가';
 
@@ -1559,19 +1387,19 @@
                                 const safeDiff = parseInt(String(res.difficulty).replace(/[^0-9]/g, '')) || 4;
 
                                 return {
-                                    period: imgFileName, 
-                                    rawPeriod: imgFileName,
-                                    fileName: imgFileName,
+                                    period: baseFileName,
+                                    rawPeriod: baseFileName,
+                                    fileName: baseFileName,
                                     school: parsedInfo.school || "학교명 미상",
                                     qNum: safeQNum,
                                     type: "객관식",
                                     difficulty: safeDiff,
                                     majorUnit: cleanMajorUnit(major),
-                                    minorUnit: minor, 
+                                    minorUnit: minor,
                                     concept: conceptStr,
                                     score: safeScore,
-                                    answer: res.answer || "", // ✨ 정답 데이터 추가
-                                    aiStrategy: res.aiStrategy || "", 
+                                    answer: res.answer || "",
+                                    aiStrategy: res.aiStrategy || "",
                                     aiPoint: res.aiPoint || "",
                                     aiConcept: res.aiConcept || ""
                                 };
@@ -1636,7 +1464,7 @@
 
                 } catch(error) {
                     console.error(error);
-                    showToast("파일 처리 중 API 통신 지연 혹은 오류가 발생했습니다. 잠시 후 다시 시도해주세요.", "error");
+                    showToast("통신 지연 또는 오류가 발생했습니다. 잠시 후 재시도하세요.", "error");
                 } finally {
                     setIsGenerating(false);
                     e.target.value = '';
@@ -2198,7 +2026,7 @@
                                     </div>
                                 </div>
 
-                                {/* 🌟 3. 상대적 고난도 문항 심층 분석 (카메라 박스 삭제) 🌟 */}
+                                {/* 🌟 3. 상대적 고난도 문항 심층 분석 (선생님 요청대로 원본 회색 카메라 뷰어 복구) 🌟 */}
                                 {examReportData.reportContent.hardQuestionsList.length > 0 && (
                                     <div className="mb-8 break-inside-avoid">
                                         <h2 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2 border-l-4 border-orange-500 pl-3">3. 상대적 고난도 문항 심층 분석</h2>
@@ -2207,8 +2035,6 @@
                                                 <div key={idx} className="bg-white border border-orange-200 rounded-2xl shadow-sm relative overflow-hidden flex flex-col p-5 pt-7">
                                                     <div className="absolute top-0 right-0 bg-orange-500 text-white text-[10px] font-bold px-3 py-1 rounded-bl-lg z-10">고난도 문항</div>
                                                     
-                                                    {/* 카메라 업로드 창 삭제됨 */}
-
                                                     <div className="flex flex-col flex-1">
                                                         <h3 className="text-[16px] font-black text-slate-800 mb-3 flex items-center gap-2">
                                                             <div className="w-6 h-6 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center text-sm shrink-0">{q.qNum}</div>
@@ -2253,7 +2079,7 @@
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-100">
-                                                {data.targetExams.map((q, idx) => (
+                                                {examReportData.targetExams.map((q, idx) => (
                                                     <tr key={idx} className="hover:bg-slate-50 transition-colors">
                                                         <td className="py-2.5 px-3 text-center font-black text-slate-700 border-r">{q.qNum}</td>
                                                         <td className="py-2.5 px-3 text-center font-bold text-slate-600 border-r">{q.type || '객관식'}</td>
