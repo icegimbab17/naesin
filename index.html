@@ -94,21 +94,6 @@
             appId: "1:795313813853:web:6a8e1224a0a4eb30b590b4"
         };
 
-        // 🛡️ Firebase SDK 로드 확인 — 못 불러왔으면 백지 대신 원인을 화면에 표시
-        if (!window.firebase || !window.firebase.initializeApp) {
-            const el = document.getElementById('root');
-            if (el) el.innerHTML =
-                '<div style="max-width:560px;margin:80px auto;padding:24px;font-family:Pretendard,sans-serif;' +
-                'border:1px solid #fecaca;background:#fef2f2;border-radius:12px;color:#991b1b;line-height:1.7">' +
-                '<b style="font-size:18px">Firebase SDK를 불러오지 못했습니다.</b><br/>' +
-                'AI 분석 외 데이터 기능에 필요한 스크립트(www.gstatic.com)가 차단된 것 같습니다.<br/><br/>' +
-                '확인: ① 네트워크/방화벽이 <code>www.gstatic.com</code>을 막고 있는지 ' +
-                '② 광고차단·보안 프로그램(브라우저 확장, 백신) ③ 오프라인 여부<br/>' +
-                '※ 배포본(github.io)에서는 정상이고 미리보기에서만 이렇다면, 미리보기 환경의 네트워크 문제입니다.' +
-                '</div>';
-            throw new Error('Firebase SDK not loaded (window.firebase is undefined)');
-        }
-
         let activeFirebaseConfig = firebaseConfig;
         if (typeof __firebase_config !== 'undefined') {
             try { activeFirebaseConfig = JSON.parse(__firebase_config); } catch (e) {}
@@ -120,9 +105,6 @@
         const db = window.firebase.firestore();
         const auth = window.firebase.auth();
         const appId = typeof __app_id !== 'undefined' ? __app_id : activeFirebaseConfig.projectId;
-
-        // 🌟 Gemini 프록시 주소 (Supabase Edge Function). 키는 서버 Secret에만 존재함.
-        const GEMINI_PROXY_URL = "https://uqeczxlxnyftwdxijffa.supabase.co/functions/v1/gemini-proxy";
 
         // 🌟 문항분류코드 정규화 
         const normalizeCode = (code) => {
@@ -651,8 +633,7 @@
         };
 
         function App() {
-            // ℹ️ API 키는 더 이상 클라이언트에 두지 않습니다. Cloudflare Worker 프록시(GEMINI_PROXY_URL)가 서버에서 키를 주입합니다.
-            const apiKey = ""; // (미사용 — 프록시 사용)
+            const apiKey = ""; 
             
             const urlParams = new URLSearchParams(window.location.search);
             const reportParam = urlParams.get('report');
@@ -791,7 +772,7 @@
                 } else if (viewMode === 'exam') {
                     if (!filters.examYear && optionsData.examYears.length > 0) {
                         setFilters(p => ({ ...p, examYear: optionsData.examYears[optionsData.examYears.length - 1] }));
-                    } else if (optionsData.examSchoolExams.length > 0 && !optionsData.examSchoolExams.includes(filters.examSchoolExam)) {
+                    } else if (optionsData.examSchoolExams.length > 0 && (!filters.examSchoolExams.includes(filters.examSchoolExam))) {
                         setFilters(p => ({ ...p, examSchoolExam: optionsData.examSchoolExams[0] }));
                     }
                 }
@@ -1037,16 +1018,16 @@
 
             const comments = useMemo(() => generateAIComment(analysisData), [analysisData]);
 
-            // 🌟 1단계: API 통신 헬퍼 (지수 백오프 타임아웃 방어)
-            const callGeminiStaged = async (parts, schemaObj, stageMsg) => {
+            // 🌟 1단계: API 통신 헬퍼 (지수 백오프 타임아웃 방어 및 스키마 간소화) 🌟
+            const callGeminiStaged = async (parts, stageMsg) => {
                 showToast(stageMsg, "info");
-                // 키는 클라이언트에 없음 — Cloudflare Worker 프록시가 서버에서 키를 주입해 Gemini를 호출함
-                let url = GEMINI_PROXY_URL;
+                
+                let url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
                 const payload = {
                     contents: [{ role: "user", parts }],
                     generationConfig: {
-                        responseMimeType: "application/json",
-                        responseSchema: schemaObj
+                        responseMimeType: "application/json"
+                        // 주의: responseSchema를 완전히 제거하여 프록시 서버의 구조 튕김 현상 완벽 차단!
                     }
                 };
 
@@ -1056,21 +1037,36 @@
                     try {
                         const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                         if (!response.ok) {
-                            const errTxt = await response.text();
-                            console.error("API Error:", errTxt);
-                            throw new Error(`API Fail: ${response.status}`);
+                            let errTxt = "";
+                            try { errTxt = await response.text(); } catch(e) {}
+                            console.error(`API Error (Status: ${response.status}):`, errTxt);
+                            throw new Error(`API Fail: HTTP ${response.status}`);
                         }
                         const data = await response.json();
                         if(data && data.candidates && data.candidates[0].content) {
                             let text = data.candidates[0].content.parts[0].text;
-                            text = text.replace(/```json/g, '').replace(/```/g, '').trim();
-                            const parsed = JSON.parse(text);
-                            return parsed.results || parsed || [];
+                            
+                            // 방탄(Bulletproof) JSON 파싱 로직: 불필요한 AI의 인사말 등 텍스트를 무시하고 [ ] 배열만 추출
+                            const firstBracket = text.indexOf('[');
+                            const lastBracket = text.lastIndexOf(']');
+                            
+                            if (firstBracket !== -1 && lastBracket !== -1 && lastBracket >= firstBracket) {
+                                text = text.substring(firstBracket, lastBracket + 1);
+                                return JSON.parse(text);
+                            } else {
+                                text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+                                const parsed = JSON.parse(text);
+                                return parsed.results || parsed || [];
+                            }
                         }
                         return [];
                     } catch(e) {
                         retries--;
-                        if(retries === 0) throw e;
+                        console.warn(`API 재시도 남은 횟수: ${retries} (에러: ${e.message})`);
+                        if(retries === 0) {
+                            showToast(`통신 실패: ${e.message}. 잠시 후 다시 시도해주세요.`, "error");
+                            throw e;
+                        }
                         await new Promise(r => setTimeout(r, delay));
                         delay *= 2;
                     }
@@ -1078,7 +1074,7 @@
                 return [];
             };
 
-            // 🌟 2단계: 파일 업로드 메인 함수 (단계별 파이프라인 결합)
+            // 🌟 2단계: 파일 업로드 메인 함수 (단계별 파이프라인 결합) 🌟
             const handleFileUpload = async (e) => {
                 const files = Array.from(e.target.files);
                 if (files.length === 0) return;
@@ -1096,7 +1092,7 @@
                 setIsGenerating(true);
 
                 try {
-                    // (1) 엑셀 파일 처리 (마스터DB 및 학생 데이터) - 기존 로직 유지
+                    // (1) 엑셀 파일 처리 (마스터DB 및 학생 데이터)
                     for (const file of otherFiles) {
                         if (file.name.toLowerCase().endsWith('.csv') || file.name.toLowerCase().endsWith('.tsv') || file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.xls')) {
                             await new Promise((resolve) => {
@@ -1292,7 +1288,7 @@
                         } catch (e) { console.error("Firestore Save Error", e); }
                     }
 
-                    // (2) 🌟 이미지 + PDF 통합 파이프라인 (타임아웃 방어 적용) 🌟
+                    // (2) 🌟 이미지 + PDF 통합 파이프라인 (안정성 극대화) 🌟
                     if (imageFiles.length > 0 || pdfFile) {
                         let pdfBase64 = null;
                         if (pdfFile) {
@@ -1315,7 +1311,7 @@
 
                         // [STEP 1] 가벼운 이미지 분석으로 메타데이터 우선 추출
                         if (imageFiles.length > 0) {
-                            const prompt1 = "첨부된 분석표 이미지에서 각 행의 데이터를 추출하세요. 1. 문제 번호(qNum), 2. 문항분류코드(code), 3. 배점(score), 4. 난이도(difficulty)를 파악하세요. 결과를 순수 JSON 객체(키: 'results') 형태로 반환하세요.";
+                            const prompt1 = "첨부된 분석표 이미지에서 문항별 데이터를 추출하세요.\n1. 문제 번호(qNum)\n2. 문항분류코드(code)\n3. 배점(score)\n4. 난이도(difficulty)\n\n다른 설명은 일절 하지 말고, 오직 [ { \"qNum\": \"1\", \"code\": \"MS...\", \"score\": 5, \"difficulty\": 3 } ] 형태의 순수 JSON 배열만 반환하세요.";
                             const parts1 = [{ text: prompt1 }];
                             for(const file of imageFiles) {
                                 const base64 = await new Promise((resolve) => {
@@ -1325,56 +1321,19 @@
                                 });
                                 parts1.push({ inlineData: { mimeType: file.type, data: base64 } });
                             }
-
-                            const schema1 = {
-                                type: "OBJECT",
-                                properties: {
-                                    results: {
-                                        type: "ARRAY",
-                                        items: {
-                                            type: "OBJECT",
-                                            properties: {
-                                                qNum: { type: "STRING" },
-                                                code: { type: "STRING" },
-                                                score: { type: "STRING" },
-                                                difficulty: { type: "STRING" }
-                                            }
-                                        }
-                                    }
-                                }
-                            };
-                            baseData = await callGeminiStaged(parts1, schema1, "1/2단계: 분석표에서 문항별 기본 정보(배점, 난이도 등) 추출 중...");
+                            
+                            // 스키마 인자 제거, 메시지 추가
+                            baseData = await callGeminiStaged(parts1, "1/2단계: 분석표에서 문항별 기본 정보(배점, 난이도 등) 추출 중...");
                         }
 
                         // [STEP 2] 무거운 PDF 분석으로 본문/정답 추출 및 병합
                         if (pdfFile) {
-                            const prompt2 = "첨부된 시험지 PDF 원문을 분석하세요. 각 문항 번호(qNum)에 해당하는 1. '정답(answer)' (객관식은 번호, 주관식은 단답/숫자형), 2. 출제내용(concept), 3. 어려운 포인트(aiPoint), 4. 맞춤형 풀이 전략(aiStrategy)을 작성하세요. 모든 수학 기호는 반드시 LaTeX($ 또는 $$)로 감싸고, 결과를 순수 JSON 객체(키: 'results') 형태로 반환하세요.";
+                            // 프롬프트를 획기적으로 줄여 타임아웃 방지
+                            const prompt2 = "첨부된 시험지 PDF에서 각 문항 번호(qNum)에 대한 다음 4가지를 추출하세요.\n1. 정답(answer) - 객관식은 번호, 주관식은 단답/숫자형\n2. 출제 개념(concept)\n3. 어려운 포인트(aiPoint)\n4. 맞춤형 풀이 전략(aiStrategy)\n\n※ 주의사항: 텍스트 생성 타임아웃을 막기 위해 3번과 4번 항목은 핵심만 1~2문장으로 아주 짧게 요약하세요. 수식은 반드시 LaTeX 형식($ $)을 사용하세요.\n다른 설명은 일절 하지 말고, 오직 [ { \"qNum\": \"1\", \"answer\": \"3\", \"concept\": \"...\", \"aiPoint\": \"...\", \"aiStrategy\": \"...\" } ] 형태의 순수 JSON 배열만 반환하세요.";
                             const parts2 = [{ text: prompt2 }];
                             parts2.push({ inlineData: { mimeType: "application/pdf", data: pdfBase64 } });
-
-                            const schema2 = {
-                                type: "OBJECT",
-                                properties: {
-                                    results: {
-                                        type: "ARRAY",
-                                        items: {
-                                            type: "OBJECT",
-                                            properties: {
-                                                qNum: { type: "STRING" },
-                                                answer: { type: "STRING", description: "정답" },
-                                                concept: { type: "STRING" },
-                                                majorUnit: { type: "STRING" },
-                                                minorUnit: { type: "STRING" },
-                                                aiPoint: { type: "STRING" },
-                                                aiConcept: { type: "STRING" },
-                                                aiStrategy: { type: "STRING" }
-                                            }
-                                        }
-                                    }
-                                }
-                            };
                             
-                            const pdfData = await callGeminiStaged(parts2, schema2, "2/2단계: 시험지 PDF 정밀 분석 중 (정답/풀이전략 매칭 - 최대 1~2분 소요)...");
+                            const pdfData = await callGeminiStaged(parts2, "2/2단계: 시험지 PDF 정밀 분석 중 (정답/풀이전략 매칭 - 최대 1~2분 소요)...");
 
                             // qNum 기준으로 Map 병합 (숫자로 파싱하여 "01"과 "1" 매칭)
                             const map = new Map();
@@ -1452,16 +1411,6 @@
                         addedExams.forEach(ex => {
                             db.collection('artifacts').doc(appId).collection('public').doc('data').collection('exams').doc(`${ex.period}_${ex.qNum}`).set(ex).catch(e => console.warn(e));
                         });
-                        
-                        const justAdded = addedExams[0];
-                        const info = parseExamInfo(justAdded.fileName || justAdded.period);
-                        
-                        setFilters(prev => ({
-                            ...prev,
-                            examYear: info.year !== "미상" ? info.year : '',
-                            examSchoolExam: info.schoolExamDisplay !== "분석 시험" ? info.schoolExamDisplay : ''
-                        }));
-                        setViewMode('exam'); 
                     }
 
                     if (addedStudents.length > 0) {
@@ -1470,6 +1419,45 @@
                             const saveObj = { name: s.name, period: s.period, responses: s.responses };
                             db.collection('artifacts').doc(appId).collection('public').doc('data').collection('students').doc(`${s.name}_${s.period}`).set(saveObj).catch(e => console.warn(e));
                         });
+                    }
+
+                    // 🌟 사용자 요청: 파일명 분석을 통한 자동 탭 이동 및 필터 설정 🌟
+                    const representativeFile = pdfFile || imageFiles[0] || otherFiles[0];
+                    if (representativeFile) {
+                        const fileName = representativeFile.name.replace(/\.[^/.]+$/, "").trim(); // 확장자 제거
+                        const info = parseExamInfo(fileName);
+                        
+                        setFilters(prev => {
+                            let nextFilters = { ...prev };
+                            
+                            // 1. 기출 분석 탭 필터 기본 세팅
+                            if (info.year !== "미상") nextFilters.examYear = info.year;
+                            if (info.schoolExamDisplay !== "분석 시험") nextFilters.examSchoolExam = info.schoolExamDisplay;
+                            
+                            // 2. '성취도 평가' 조건부 로직 적용
+                            if (fileName.includes('성취도 평가')) {
+                                // 과정 선택 (3-2 등)
+                                if (fileName.includes('3-2')) nextFilters.studentCourse = '3-2';
+                                else if (info.semester !== "과정미상") nextFilters.studentCourse = info.semester;
+                                
+                                // 시험 시기 (중간 등)
+                                if (fileName.includes('중간')) nextFilters.studentExam = '중간';
+                                else if (info.exam !== "시험미상") nextFilters.studentExam = info.exam;
+                                
+                                // 학생이 방금 추가되었다면 첫 번째 학생 자동 선택
+                                if (addedStudents.length > 0) {
+                                    nextFilters.studentName = addedStudents[0].name;
+                                }
+                            }
+                            return nextFilters;
+                        });
+
+                        // 3. '성취도 평가'가 포함되어 있으면 '개별 성취도(student)' 탭으로 이동
+                        if (fileName.includes('성취도 평가')) {
+                            setViewMode('student');
+                        } else if (addedExams.length > 0) {
+                            setViewMode('exam');
+                        }
                     }
 
                     let msg = [];
@@ -1482,8 +1470,8 @@
                     else showToast(`❌ 처리된 데이터가 없습니다. 파일 형태를 확인하세요.`, 'error');
 
                 } catch(error) {
-                    console.error(error);
-                    showToast("통신 지연 또는 오류가 발생했습니다. 잠시 후 재시도하세요.", "error");
+                    console.error("최종 에러:", error);
+                    // 에러가 발생하더라도 이전에 올린 데이터가 초기화되지 않도록 유지
                 } finally {
                     setIsGenerating(false);
                     e.target.value = '';
@@ -1762,7 +1750,7 @@
                             </label>
 
                             <button onClick={() => setShowDataModal(true)} className="cursor-pointer bg-slate-100 text-slate-700 px-3 py-2 rounded-lg text-sm font-bold border hover:bg-slate-200 transition-colors flex items-center gap-1.5 shadow-sm" title="데이터 개별/전체 삭제 관리">
-                                <Icon name="settings" size={16}/> 관리
+                                <Icon name="settings" size={16}/> 설정 및 관리
                             </button>
                         
                             {viewMode === 'student' && (
@@ -1783,18 +1771,20 @@
                         </div>
                     </div>
 
-                    {/* 🌟 데이터 관리 모달창 🌟 */}
+                    {/* 🌟 데이터 관리 및 설정 모달창 🌟 */}
                     {showDataModal && (
                         <div className="fixed inset-0 bg-slate-900/40 z-[999999] flex items-center justify-center p-4 backdrop-blur-sm no-print">
                             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[85vh] animate-in fade-in zoom-in duration-200">
                                 <div className="p-5 border-b flex justify-between items-center bg-slate-50 rounded-t-2xl">
-                                    <h2 className="text-lg font-black text-slate-800 flex items-center gap-2"><Icon name="database" className="text-indigo-600"/> 데이터 관리</h2>
+                                    <h2 className="text-lg font-black text-slate-800 flex items-center gap-2"><Icon name="settings" className="text-indigo-600"/> 설정 및 데이터 관리</h2>
                                     <button onClick={() => setShowDataModal(false)} className="cursor-pointer text-slate-400 hover:text-slate-700 bg-white rounded-full p-1 border shadow-sm transition-colors"><Icon name="x" size={18}/></button>
                                 </div>
                                 
                                 <div className="p-5 overflow-y-auto flex-1 space-y-6">
+                                    
+                                    {/* 데이터 관리 */}
                                     {allSavedPeriods.length === 0 ? (
-                                        <div className="text-center text-slate-400 py-10 font-bold">저장된 데이터가 없습니다.</div>
+                                        <div className="text-center text-slate-400 py-10 font-bold">저장된 기출/학생 데이터가 없습니다.</div>
                                     ) : (
                                         allSavedPeriods.map(period => {
                                             const info = parseExamInfo(period);
@@ -1822,7 +1812,7 @@
                                 </div>
                                 
                                 <div className="p-5 border-t bg-slate-50 flex justify-between items-center rounded-b-2xl">
-                                    <span className="text-xs text-slate-500 font-bold">⚠️ 삭제 시 클라우드 서버에서도 지워집니다.</span>
+                                    <span className="text-xs text-slate-500 font-bold">⚠️ 데이터 삭제 시 서버에서도 지워집니다.</span>
                                     <button onClick={handleClearAll} disabled={allSavedPeriods.length === 0} className="cursor-pointer bg-rose-500 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md hover:bg-rose-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                                         모든 데이터 초기화
                                     </button>
@@ -1838,11 +1828,10 @@
                             <p className="text-sm font-medium text-slate-400 leading-relaxed">
                                 상단의 <strong>[데이터 업로드]</strong> 버튼을 눌러 작업을 시작하세요.<br/>
                                 <span className="opacity-70">
-                                    // ✅ AI 분석은 Supabase 프록시를 통해 동작합니다. (키는 서버 Secret에만 저장)<br/>
                                     ✅ 분류코드 마스터DB(최초1회), <strong>시험지 원문(PDF)</strong>, <strong>분석 이미지(JPG)</strong>를 동시에 올리면 AI가 즉시 문제를 풀고 분석합니다.</span>
                             </p>
-                            
-                            <div className="mt-8 bg-slate-100 px-6 py-3 rounded-xl border border-slate-200 shadow-inner">
+
+                            <div className="mt-6 bg-slate-100 px-6 py-3 rounded-xl border border-slate-200 shadow-inner">
                                 <span className="text-xs font-bold text-slate-500 flex items-center justify-center gap-1.5">
                                     <Icon name="database" size={14} className="text-indigo-500"/>
                                     현재 클라우드 마스터 DB: <span className="text-indigo-600 font-black text-[15px] mx-1">{Object.keys(masterDB).length}</span> 개의 분류코드 저장 완료
