@@ -791,7 +791,7 @@
                 } else if (viewMode === 'exam') {
                     if (!filters.examYear && optionsData.examYears.length > 0) {
                         setFilters(p => ({ ...p, examYear: optionsData.examYears[optionsData.examYears.length - 1] }));
-                    } else if (optionsData.examSchoolExams.length > 0 && (!filters.examSchoolExams.includes(filters.examSchoolExam))) {
+                    } else if (optionsData.examSchoolExams.length > 0 && !optionsData.examSchoolExams.includes(filters.examSchoolExam)) {
                         setFilters(p => ({ ...p, examSchoolExam: optionsData.examSchoolExams[0] }));
                     }
                 }
