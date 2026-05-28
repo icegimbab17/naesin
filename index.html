@@ -19,7 +19,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
 
     <!-- KaTeX -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katecss.min.css">
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js"></script>
 
@@ -115,19 +115,12 @@
             return c;
         };
 
+        // 🌟 수정됨: 강제적인 수학 개념 맵핑을 제거하고, 엑셀의 '첫번째 대단원' 텍스트를 그대로 노출
         const cleanMajorUnit = (str) => {
             if (!str) return '미분류';
             let s = String(str);
             if (s.includes('>')) s = s.split('>')[0]; 
             s = s.replace(/[\(\[\{<].*?[\)\]\}>]/g, '').replace(/[0-9\-\:\>_]/g, '').trim();
-
-            if (s.includes('미분류')) return '미분류';
-            if (s.includes('수와 연산') || s.includes('유리수') || s.includes('소수') || s.includes('제곱근') || s.includes('실수') || s.includes('소인수분해') || s.includes('정수')) return '수와 연산';
-            if (s.includes('문자와 식') || s.includes('방정식') || s.includes('부등식') || s.includes('다항식') || s.includes('인수분해') || s.includes('이차방정식') || s.includes('일차방정식')) return '문자와 식';
-            if (s.includes('함수') || s.includes('이차함수') || s.includes('일차함수') || s.includes('그래프')) return '함수';
-            if (s.includes('기하') || s.includes('도형') || s.includes('삼각형') || s.includes('사각형') || s.includes('피타고라스') || s.includes('삼각비') || s.includes('원의 성질') || s.includes('원과 직선')) return '기하';
-            if (s.includes('확률') || s.includes('통계') || s.includes('경우의 수') || s.includes('대푯값') || s.includes('산포도') || s.includes('자료')) return '확률과 통계';
-            
             return s || '기타 단원';
         };
 
@@ -136,8 +129,12 @@
             str = str.replace(/_유형분석|유형분석|_학생답안|학생답안/g, '').trim();
 
             let year = "미상";
-            const yearMatch = str.match(/(24|25|26|27|28|29|30)/);
-            if (yearMatch) year = yearMatch[0] + "년";
+            const yearMatch = str.match(/(202[0-9]|2030|\b2[0-9]\b)/);
+            if (yearMatch) {
+                let y = yearMatch[0];
+                if (y.length === 2) y = "20" + y;
+                year = y + "년";
+            }
 
             let school = "학교미상";
             const schoolMatch = str.match(/[가-힣]{2,4}(?:중|고)/);
@@ -179,7 +176,6 @@
             return { year, school, semester, exam, schoolExamDisplay, fullMatchKey };
         };
 
-        // 🌟 수정됨: 명시적인 school, semester 속성을 최우선으로 사용하여 조합 ('3-2 해강중')
         const getCourseDisplay = (info) => {
             if (!info) return '';
             const sem = info.semester && info.semester !== "과정미상" ? info.semester : "";
@@ -469,9 +465,9 @@
             const kiceGuidelines = {
                 "수와 연산": "실수의 체계와 성질을 명확히 이해하고, 빠르고 정확한 연산을 요구합니다.",
                 "문자와 식": "주어진 조건을 수식으로 정확히 표현하고, 다항식의 전개와 인수분해, 그리고 방정식 및 부등식을 논리적으로 해결하는 능력이 필요합니다.",
-                "함수": "함수의 정의를 바탕으로 그래프를 그리고, x절편, y절편, 기울기, 꼭짓점 등의 기하학적 의미를 파악하는 것이 중요합니다.",
+                "함수": "함수의 정의를 바탕으로 그래프를 그리고, x절편, y절편, 기울기, 꼭짓점 등의 기하학적 의미 파악이 중요합니다.",
                 "기하": "도형의 성질(합동, 닮음, 피타고라스 정리, 삼각비, 원 등)을 이용하여 보조선을 긋고 길이나 넓이를 구하는 공간 지각력이 요구됩니다.",
-                "확률과 통계": "경우의 수를 빠짐없이 구하고, 확률의 기본 성질 및 대푯값과 산포도의 의미를 바탕으로 실생활 상황을 해석하는 사고방식이 필요합니다."
+                "확률과 통계": "경우의 수를 빠짐없이 구하고, 확률의 기본 성질 및 대푯값과 산포도의 의미를 바탕으로 실생활 상황을 해석해야 합니다."
             };
 
             let matchedGuideline = kiceGuidelines[primaryWeakUnit] || "전반적인 수학 기본 개념을 탄탄히 다지는 것이 중요합니다.";
@@ -486,7 +482,7 @@
                     method = `전체적인 개념 이해도가 매우 우수합니다. 간혹 실수하는 문제나 고난도 심화 문제를 집중적으로 풀어보며 100점을 향한 훈련을 진행하세요.`;
                     weakText = "전반적으로 우수함";
                 } else {
-                    method = `전체적인 개념 이해도가 매우 우수합니다. 간혹 실수하는 문제나 고난도 심화 문제를 집중적으로 풀어보며 100점을 향한 훈련을 진행하세요.\n\n📌 [KICE 평가원 기준 학습 조언]\n${matchedGuideline}`;
+                    method = `전체적인 개념 이해도가 매우 우수합니다. 간혹 실수하는 문제나 고난도 심화 문제를 집중적으로 풀어보며 100점을 향한 훈련을 진행하세요.\n\n📌 [학습 조언]\n${matchedGuideline}`;
                 }
             }
             else if (percentage >= 70) {
@@ -494,7 +490,7 @@
                     method = `기본적인 개념은 잘 잡혀 있습니다. 틀린 문제들의 오답 노트를 작성하고 기본 예제를 다시 한 번 풀어보며 실수를 줄여보세요.`;
                     weakText = "전반적으로 양호함";
                 } else {
-                    method = `기본적인 개념은 잘 잡혀 있으나 특정 단원([${weakText}])에서 오답이 발생하고 있습니다.\n\n📌 [KICE 평가원 기준 학습 조언]\n${matchedGuideline}\n\n위 지침을 바탕으로 오답 노트를 작성하며 빈틈을 메워주세요.`;
+                    method = `기본적인 개념은 잘 잡혀 있으나 특정 단원([${weakText}])에서 오답이 발생하고 있습니다.\n\n📌 [학습 조언]\n${matchedGuideline}\n\n위 지침을 바탕으로 오답 노트를 작성하며 빈틈을 메워주세요.`;
                 }
             }
             else {
@@ -692,7 +688,7 @@
                     const data = snap.docs.map(d => {
                         const docData = d.data();
                         const parsed = parseExamInfo(docData.fileName || docData.period || docData.rawPeriod);
-                        return { ...docData, ...parsed };
+                        return { ...docData, ...parsed }; 
                     });
                     setExams(data); localStorage.setItem('math_exams_cache', JSON.stringify(data));
                 }, err => {
@@ -703,8 +699,7 @@
                     const data = snap.docs.map(d => {
                         const docData = d.data();
                         const parsed = parseExamInfo(docData.period);
-                        // 🌟 명시적으로 저장된 속성이 있으면 덮어쓰기
-                        return { ...parsed, ...docData };
+                        return { ...parsed, ...docData }; 
                     });
                     setStudents(data); localStorage.setItem('math_students_cache', JSON.stringify(data));
                 }, err => {
@@ -779,29 +774,47 @@
 
                 let totalScoreCalc = 0;
                 const results = targetExams.map(ex => {
-                    const studentAns = targetStudent.responses[ex.qNum]; 
+                    const studentAnsObj = targetStudent.responses[ex.qNum]; 
                     const fullScore = ex.score || 0; 
                     let earnedScore = 0;
                     let status = 'X';
                     
-                    // 🌟 수정됨: 학생이 원문자(①)를 썼을 때 1로 인식하도록 정규화 🌟
                     const normalizeAns = (ans) => String(ans || '').trim().replace(/①/g, '1').replace(/②/g, '2').replace(/③/g, '3').replace(/④/g, '4').replace(/⑤/g, '5');
-                    const correctAns = normalizeAns(ex.answer);
-                    const stuAnsStr = normalizeAns(studentAns);
 
-                    if (stuAnsStr === 'O' || stuAnsStr === '정답') {
-                        earnedScore = fullScore; status = 'O';
-                    } else if (stuAnsStr === 'X' || stuAnsStr === '오답' || !stuAnsStr) {
-                        earnedScore = 0; status = 'X';
-                    } else if (correctAns !== '' && stuAnsStr === correctAns) {
-                        earnedScore = fullScore; status = 'O';
-                    } else if (typeof studentAns === 'object' && studentAns !== null) {
-                        const ratio = studentAns.studentFull > 0 ? (studentAns.earned / studentAns.studentFull) : 0;
+                    let rawStudentAnsStr = '';
+                    let rawStudentCorrectAnsStr = '';
+                    let isEarnedObject = false;
+
+                    if (typeof studentAnsObj === 'object' && studentAnsObj !== null) {
+                        if (studentAnsObj.studentAns !== undefined || studentAnsObj.correctAns !== undefined) {
+                            rawStudentAnsStr = studentAnsObj.studentAns || '';
+                            rawStudentCorrectAnsStr = studentAnsObj.correctAns || '';
+                        } else if (studentAnsObj.earned !== undefined) {
+                            isEarnedObject = true;
+                        }
+                    } else if (typeof studentAnsObj === 'string') {
+                        rawStudentAnsStr = studentAnsObj;
+                    }
+
+                    // 🌟 1. 핵심수정: 학생 CSV 파일에 있는 '정답'을 기존 성취도 평가의 정답보다 최우선하여 덮어씁니다.
+                    const correctAnsStr = rawStudentCorrectAnsStr || ex.answer;
+
+                    const correctAns = normalizeAns(correctAnsStr);
+                    const stuAnsStr = normalizeAns(rawStudentAnsStr);
+
+                    if (isEarnedObject) {
+                        const ratio = studentAnsObj.studentFull > 0 ? (studentAnsObj.earned / studentAnsObj.studentFull) : 0;
                         earnedScore = fullScore * ratio;
                         earnedScore = Math.round(earnedScore * 10) / 10; 
                         if (earnedScore >= fullScore && fullScore > 0) { earnedScore = fullScore; status = 'O'; } 
                         else if (earnedScore > 0) { status = '△'; } 
                         else { status = 'X'; }
+                    } else if (stuAnsStr === 'O' || stuAnsStr === '정답') {
+                        earnedScore = fullScore; status = 'O';
+                    } else if (stuAnsStr === 'X' || stuAnsStr === '오답' || stuAnsStr === '') {
+                        earnedScore = 0; status = 'X';
+                    } else if (correctAns !== '' && stuAnsStr === correctAns) {
+                        earnedScore = fullScore; status = 'O';
                     } else {
                         const numAns = parseFloat(stuAnsStr);
                         const numCorrect = parseFloat(correctAns);
@@ -820,7 +833,8 @@
 
                     totalScoreCalc += earnedScore;
                     const isCorrect = earnedScore > 0;
-                    return { ...ex, isCorrect, studentAns, earnedScore, status, fullScore };
+                    
+                    return { ...ex, answer: correctAnsStr, isCorrect, studentAns: stuAnsStr, earnedScore, status, fullScore };
                 });
 
                 const maxPossibleScore = targetExams.reduce((sum, ex) => sum + (ex.score || 0), 0);
@@ -1154,7 +1168,8 @@
                                                         
                                                         const rawPeriod = getVal(['출제시기', '시기']); 
                                                         const concept = getVal(['출제내용', '세부유형', '유형내용', '문항내용', '핵심개념']);
-                                                        let rawMajor = getVal(['대단원', '단원명', '단원', '영역', '출제단원'], ['소단원', '중단원', '세부']);
+                                                        // 🌟 수정됨: 대단원이 없어도 '유형' 컬럼을 적극 참조하도록 우선순위 추가
+                                                        let rawMajor = getVal(['대단원', '단원명', '단원', '영역', '출제단원', '유형'], ['소단원', '중단원', '세부']);
                                                         let minorUnit = getVal(['중단원', '소단원', '세부']);
                                                         
                                                         if (rawMajor && rawMajor.includes('>')) {
@@ -1182,6 +1197,7 @@
                                                             minorUnit: minorUnit,
                                                             concept: concept,
                                                             score: parseFloat(getVal(['배점', '점수'])) || 0,
+                                                            answer: getVal(['정답', '답']),
                                                             fileName: cleanFileName 
                                                         };
                                                     }).filter(e => e.qNum > 0);
@@ -1198,7 +1214,6 @@
                                                     }
                                                     const responses = {};
                                                     cleanJson.forEach(row => {
-                                                        // 🌟 수정됨: 제외 키워드를 추가하여 '쓴답'과 '정답'을 완벽 분리
                                                         const getVal = (keywords, excludes = []) => {
                                                             const key = Object.keys(row).find(k => {
                                                                 const cleanK = String(k).replace(/\s+/g, '');
@@ -1217,16 +1232,20 @@
                                                             const numericMatch = rawScore.replace(/[^0-9.]/g, ''); 
                                                             const numericFullMatch = rawStudentFull.replace(/[^0-9.]/g, ''); 
                                                             
-                                                            // 🌟 수정됨: 학생이 쓴 원문자(①, ② 등) 우선 파악
+                                                            // 🌟 수정됨: 학생이 쓴 답과 CSV 내의 진짜 정답을 둘 다 추출하여 저장
                                                             const rawStudentAns = getVal(['쓴답', '학생답', '입력답', '답', '학생의답'], ['정답', '해설']);
+                                                            const rawCorrectAns = getVal(['정답', '해설'], ['학생', '쓴']);
                                                             
-                                                            if (rawStudentAns !== '') {
-                                                                responses[qNum] = rawStudentAns;
+                                                            if (rawStudentAns !== '' || rawCorrectAns !== '') {
+                                                                responses[qNum] = { 
+                                                                    studentAns: rawStudentAns, 
+                                                                    correctAns: rawCorrectAns 
+                                                                };
                                                             } else if (numericMatch !== '') {
                                                                 const earned = parseFloat(numericMatch);
                                                                 const sFull = parseFloat(numericFullMatch);
                                                                 if (!isNaN(sFull) && sFull > 0) responses[qNum] = { earned, studentFull: sFull };
-                                                                else responses[qNum] = earned;
+                                                                else responses[qNum] = { earned };
                                                             } else {
                                                                 responses[qNum] = (rawScore.toUpperCase() === 'O' || rawScore === '정답') ? 'O' : 'X';
                                                             }
@@ -1415,7 +1434,6 @@
                     const currentTotalExams = [...exams, ...addedExams];
                     const fallbackPeriod = currentTotalExams.length > 0 ? currentTotalExams[0].period : '';
 
-                    // 🌟 수정됨: 학생 데이터를 매핑할 때, 찾은 bestMatch의 상세 정보를 학생 객체로 복사 🌟
                     const enrichedAddedStudents = addedStudents.map(s => {
                         let finalPeriod = s.period;
                         const studentInfo = parseExamInfo(s.period);
@@ -1498,12 +1516,12 @@
                     if (enrichedAddedStudents.length > 0) {
                         setStudents(prev => [...prev.filter(p => !enrichedAddedStudents.some(n => n.name === p.name && n.period === p.period)), ...enrichedAddedStudents]);
                         enrichedAddedStudents.forEach(s => {
-                            // DB에도 파싱된 정보(school, semester)를 같이 저장
                             const saveObj = { 
                                 name: s.name, period: s.period, responses: s.responses,
                                 school: s.school || "학교미상",
                                 semester: s.semester || "과정미상",
-                                exam: s.exam || "시험미상"
+                                exam: s.exam || "시험미상",
+                                fullMatchKey: s.fullMatchKey || ""
                             };
                             db.collection('artifacts').doc(appId).collection('public').doc('data').collection('students').doc(`${s.name}_${s.period}`).set(saveObj).catch(e => console.warn(e));
                         });
@@ -1522,7 +1540,7 @@
                     let msg = [];
                     if (isMasterDBUpdated) msg.push(`마스터DB 업데이트`);
                     if (addedExams.length > 0) msg.push(`기출 ${addedExams.length}문항 분석완료`);
-                    if (enrichedAddedStudents.length > 0) msg.push(`학생 데이터 추가`);
+                    if (enrichedAddedStudents.length > 0) msg.push(`학생 데이터 매핑 완료`);
                     if (addedMediaCount > 0) msg.push(`원문 연결`);
 
                     if (msg.length > 0) showToast(`✅ 통합 데이터 처리 성공! (${msg.join(', ')})`, 'success');
