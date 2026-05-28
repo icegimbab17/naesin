@@ -94,6 +94,21 @@
             appId: "1:795313813853:web:6a8e1224a0a4eb30b590b4"
         };
 
+        // 🛡️ Firebase SDK 로드 확인 — 못 불러왔으면 백지 대신 원인을 화면에 표시
+        if (!window.firebase || !window.firebase.initializeApp) {
+            const el = document.getElementById('root');
+            if (el) el.innerHTML =
+                '<div style="max-width:560px;margin:80px auto;padding:24px;font-family:Pretendard,sans-serif;' +
+                'border:1px solid #fecaca;background:#fef2f2;border-radius:12px;color:#991b1b;line-height:1.7">' +
+                '<b style="font-size:18px">Firebase SDK를 불러오지 못했습니다.</b><br/>' +
+                'AI 분석 외 데이터 기능에 필요한 스크립트(www.gstatic.com)가 차단된 것 같습니다.<br/><br/>' +
+                '확인: ① 네트워크/방화벽이 <code>www.gstatic.com</code>을 막고 있는지 ' +
+                '② 광고차단·보안 프로그램(브라우저 확장, 백신) ③ 오프라인 여부<br/>' +
+                '※ 배포본(github.io)에서는 정상이고 미리보기에서만 이렇다면, 미리보기 환경의 네트워크 문제입니다.' +
+                '</div>';
+            throw new Error('Firebase SDK not loaded (window.firebase is undefined)');
+        }
+
         let activeFirebaseConfig = firebaseConfig;
         if (typeof __firebase_config !== 'undefined') {
             try { activeFirebaseConfig = JSON.parse(__firebase_config); } catch (e) {}
@@ -105,6 +120,9 @@
         const db = window.firebase.firestore();
         const auth = window.firebase.auth();
         const appId = typeof __app_id !== 'undefined' ? __app_id : activeFirebaseConfig.projectId;
+
+        // 🌟 Gemini 프록시 주소 (Supabase Edge Function). 키는 서버 Secret에만 존재함.
+        const GEMINI_PROXY_URL = "https://uqeczxlxnyftwdxijffa.supabase.co/functions/v1/gemini-proxy";
 
         // 🌟 문항분류코드 정규화 
         const normalizeCode = (code) => {
@@ -1022,12 +1040,11 @@
             const callGeminiStaged = async (parts, stageMsg) => {
                 showToast(stageMsg, "info");
                 
-                let url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+                let url = GEMINI_PROXY_URL;
                 const payload = {
                     contents: [{ role: "user", parts }],
                     generationConfig: {
                         responseMimeType: "application/json"
-                        // 주의: responseSchema를 완전히 제거하여 프록시 서버의 구조 튕김 현상 완벽 차단!
                     }
                 };
 
@@ -1046,7 +1063,6 @@
                         if(data && data.candidates && data.candidates[0].content) {
                             let text = data.candidates[0].content.parts[0].text;
                             
-                            // 방탄(Bulletproof) JSON 파싱 로직: 불필요한 AI의 인사말 등 텍스트를 무시하고 [ ] 배열만 추출
                             const firstBracket = text.indexOf('[');
                             const lastBracket = text.lastIndexOf(']');
                             
@@ -1311,7 +1327,7 @@
 
                         // [STEP 1] 가벼운 이미지 분석으로 메타데이터 우선 추출
                         if (imageFiles.length > 0) {
-                            const prompt1 = "첨부된 분석표 이미지에서 문항별 데이터를 추출하세요.\n1. 문제 번호(qNum)\n2. 문항분류코드(code)\n3. 배점(score)\n4. 난이도(difficulty)\n\n다른 설명은 일절 하지 말고, 오직 [ { \"qNum\": \"1\", \"code\": \"MS...\", \"score\": 5, \"difficulty\": 3 } ] 형태의 순수 JSON 배열만 반환하세요.";
+                            const prompt1 = "첨부된 분석표 이미지에서 문항별 데이터를 추출하세요.\n1. 문제 번호(qNum)\n2. 문항분류코드(code)\n3. 배점(score)\n4. 난이도(difficulty)\n\n출력은 반드시 순수 JSON 객체(키: 'results') 형태만 반환하세요.";
                             const parts1 = [{ text: prompt1 }];
                             for(const file of imageFiles) {
                                 const base64 = await new Promise((resolve) => {
@@ -1329,7 +1345,7 @@
                         // [STEP 2] 무거운 PDF 분석으로 본문/정답 추출 및 병합
                         if (pdfFile) {
                             // 프롬프트를 획기적으로 줄여 타임아웃 방지
-                            const prompt2 = "첨부된 시험지 PDF에서 각 문항 번호(qNum)에 대한 다음 4가지를 추출하세요.\n1. 정답(answer) - 객관식은 번호, 주관식은 단답/숫자형\n2. 출제 개념(concept)\n3. 어려운 포인트(aiPoint)\n4. 맞춤형 풀이 전략(aiStrategy)\n\n※ 주의사항: 텍스트 생성 타임아웃을 막기 위해 3번과 4번 항목은 핵심만 1~2문장으로 아주 짧게 요약하세요. 수식은 반드시 LaTeX 형식($ $)을 사용하세요.\n다른 설명은 일절 하지 말고, 오직 [ { \"qNum\": \"1\", \"answer\": \"3\", \"concept\": \"...\", \"aiPoint\": \"...\", \"aiStrategy\": \"...\" } ] 형태의 순수 JSON 배열만 반환하세요.";
+                            const prompt2 = "첨부된 시험지 PDF에서 각 문항 번호(qNum)에 대한 다음 4가지를 추출하세요.\n1. 정답(answer) - 객관식은 번호, 주관식은 단답/숫자형\n2. 출제 개념(concept)\n3. 어려운 포인트(aiPoint)\n4. 맞춤형 풀이 전략(aiStrategy)\n\n※ 주의사항: 텍스트 생성 타임아웃을 막기 위해 3번과 4번 항목은 핵심만 1~2문장으로 아주 짧게 요약하세요. 수식은 반드시 LaTeX 형식($ $)을 사용하세요.\n출력은 반드시 순수 JSON 객체(키: 'results') 형태만 반환하세요.";
                             const parts2 = [{ text: prompt2 }];
                             parts2.push({ inlineData: { mimeType: "application/pdf", data: pdfBase64 } });
                             
@@ -1750,7 +1766,7 @@
                             </label>
 
                             <button onClick={() => setShowDataModal(true)} className="cursor-pointer bg-slate-100 text-slate-700 px-3 py-2 rounded-lg text-sm font-bold border hover:bg-slate-200 transition-colors flex items-center gap-1.5 shadow-sm" title="데이터 개별/전체 삭제 관리">
-                                <Icon name="settings" size={16}/> 설정 및 관리
+                                <Icon name="settings" size={16}/> 관리
                             </button>
                         
                             {viewMode === 'student' && (
@@ -1776,15 +1792,13 @@
                         <div className="fixed inset-0 bg-slate-900/40 z-[999999] flex items-center justify-center p-4 backdrop-blur-sm no-print">
                             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[85vh] animate-in fade-in zoom-in duration-200">
                                 <div className="p-5 border-b flex justify-between items-center bg-slate-50 rounded-t-2xl">
-                                    <h2 className="text-lg font-black text-slate-800 flex items-center gap-2"><Icon name="settings" className="text-indigo-600"/> 설정 및 데이터 관리</h2>
+                                    <h2 className="text-lg font-black text-slate-800 flex items-center gap-2"><Icon name="database" className="text-indigo-600"/> 데이터 관리</h2>
                                     <button onClick={() => setShowDataModal(false)} className="cursor-pointer text-slate-400 hover:text-slate-700 bg-white rounded-full p-1 border shadow-sm transition-colors"><Icon name="x" size={18}/></button>
                                 </div>
                                 
                                 <div className="p-5 overflow-y-auto flex-1 space-y-6">
-                                    
-                                    {/* 데이터 관리 */}
                                     {allSavedPeriods.length === 0 ? (
-                                        <div className="text-center text-slate-400 py-10 font-bold">저장된 기출/학생 데이터가 없습니다.</div>
+                                        <div className="text-center text-slate-400 py-10 font-bold">저장된 데이터가 없습니다.</div>
                                     ) : (
                                         allSavedPeriods.map(period => {
                                             const info = parseExamInfo(period);
@@ -1812,7 +1826,7 @@
                                 </div>
                                 
                                 <div className="p-5 border-t bg-slate-50 flex justify-between items-center rounded-b-2xl">
-                                    <span className="text-xs text-slate-500 font-bold">⚠️ 데이터 삭제 시 서버에서도 지워집니다.</span>
+                                    <span className="text-xs text-slate-500 font-bold">⚠️ 삭제 시 클라우드 서버에서도 지워집니다.</span>
                                     <button onClick={handleClearAll} disabled={allSavedPeriods.length === 0} className="cursor-pointer bg-rose-500 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md hover:bg-rose-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                                         모든 데이터 초기화
                                     </button>
@@ -1828,10 +1842,11 @@
                             <p className="text-sm font-medium text-slate-400 leading-relaxed">
                                 상단의 <strong>[데이터 업로드]</strong> 버튼을 눌러 작업을 시작하세요.<br/>
                                 <span className="opacity-70">
+                                    // ✅ AI 분석은 Supabase 프록시를 통해 동작합니다. (키는 서버 Secret에만 저장)<br/>
                                     ✅ 분류코드 마스터DB(최초1회), <strong>시험지 원문(PDF)</strong>, <strong>분석 이미지(JPG)</strong>를 동시에 올리면 AI가 즉시 문제를 풀고 분석합니다.</span>
                             </p>
-
-                            <div className="mt-6 bg-slate-100 px-6 py-3 rounded-xl border border-slate-200 shadow-inner">
+                            
+                            <div className="mt-8 bg-slate-100 px-6 py-3 rounded-xl border border-slate-200 shadow-inner">
                                 <span className="text-xs font-bold text-slate-500 flex items-center justify-center gap-1.5">
                                     <Icon name="database" size={14} className="text-indigo-500"/>
                                     현재 클라우드 마스터 DB: <span className="text-indigo-600 font-black text-[15px] mx-1">{Object.keys(masterDB).length}</span> 개의 분류코드 저장 완료
