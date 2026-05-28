@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>수학 성취도 및 기출 분석 시스템</title>
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
@@ -12,12 +13,12 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"></script>
     
-    <!-- Firebase SDK (Compat - 높은 안정성) -->
+    <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
 
-    <!-- 🌟 KaTeX 수식 렌더링 라이브러리 추가 🌟 -->
+    <!-- KaTeX -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js"></script>
@@ -52,28 +53,18 @@
                 border-radius: 0;
                 page-break-after: always;
             }
-            .print-page-1 {
-                height: 297mm !important;
-                overflow: hidden !important; 
-            }
-            .print-page-auto {
-                height: auto !important;
-                min-height: 297mm;
-                overflow: visible !important;
-            }
+            .print-page-1 { height: 297mm !important; overflow: hidden !important; }
+            .print-page-auto { height: auto !important; min-height: 297mm; overflow: visible !important; }
             * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
             .break-inside-avoid { break-inside: avoid; page-break-inside: avoid; }
         }
 
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
-        
         @keyframes spin { 100% { transform: rotate(360deg); } }
         .animate-spin-slow { animation: spin 2s linear infinite; }
         .whitespace-pre-wrap { white-space: pre-wrap; }
         .break-keep { word-break: keep-all; }
-        
-        /* KaTeX 폰트 크기 미세 조정 */
         .katex { font-size: 1.1em; }
     </style>
 </head>
@@ -94,19 +85,13 @@
             appId: "1:795313813853:web:6a8e1224a0a4eb30b590b4"
         };
 
-        // 🛡️ Firebase SDK 로드 확인 — 못 불러왔으면 백지 대신 원인을 화면에 표시
         if (!window.firebase || !window.firebase.initializeApp) {
             const el = document.getElementById('root');
             if (el) el.innerHTML =
                 '<div style="max-width:560px;margin:80px auto;padding:24px;font-family:Pretendard,sans-serif;' +
                 'border:1px solid #fecaca;background:#fef2f2;border-radius:12px;color:#991b1b;line-height:1.7">' +
-                '<b style="font-size:18px">Firebase SDK를 불러오지 못했습니다.</b><br/>' +
-                'AI 분석 외 데이터 기능에 필요한 스크립트(www.gstatic.com)가 차단된 것 같습니다.<br/><br/>' +
-                '확인: ① 네트워크/방화벽이 <code>www.gstatic.com</code>을 막고 있는지 ' +
-                '② 광고차단·보안 프로그램(브라우저 확장, 백신) ③ 오프라인 여부<br/>' +
-                '※ 배포본(github.io)에서는 정상이고 미리보기에서만 이렇다면, 미리보기 환경의 네트워크 문제입니다.' +
-                '</div>';
-            throw new Error('Firebase SDK not loaded (window.firebase is undefined)');
+                '<b style="font-size:18px">Firebase SDK를 불러오지 못했습니다.</b></div>';
+            throw new Error('Firebase SDK not loaded');
         }
 
         let activeFirebaseConfig = firebaseConfig;
@@ -121,31 +106,22 @@
         const auth = window.firebase.auth();
         const appId = typeof __app_id !== 'undefined' ? __app_id : activeFirebaseConfig.projectId;
 
-        // 🌟 Gemini 프록시 주소 (Supabase Edge Function). 키는 서버 Secret에만 존재함.
         const GEMINI_PROXY_URL = "https://uqeczxlxnyftwdxijffa.supabase.co/functions/v1/gemini-proxy";
 
-        // 🌟 문항분류코드 정규화 
         const normalizeCode = (code) => {
             if (!code) return '';
-            let c = String(code).trim().toUpperCase();
-            c = c.replace(/[\-\s_]/g, ''); 
-            if (c.startsWith('MS0')) {
-                c = 'MS' + c.substring(3); 
-            }
+            let c = String(code).trim().toUpperCase().replace(/[\-\s_]/g, ''); 
+            if (c.startsWith('MS0')) c = 'MS' + c.substring(3); 
             return c;
         };
 
-        // 🌟 대단원 순수 추출 🌟
         const cleanMajorUnit = (str) => {
             if (!str) return '미분류';
             let s = String(str);
             if (s.includes('>')) s = s.split('>')[0]; 
-            s = s.replace(/[\(\[\{<].*?[\)\]\}>]/g, '');
-            s = s.replace(/[0-9\-\:\>_]/g, '');
-            s = s.trim();
+            s = s.replace(/[\(\[\{<].*?[\)\]\}>]/g, '').replace(/[0-9\-\:\>_]/g, '').trim();
 
             if (s.includes('미분류')) return '미분류';
-
             if (s.includes('수와 연산') || s.includes('유리수') || s.includes('소수') || s.includes('제곱근') || s.includes('실수') || s.includes('소인수분해') || s.includes('정수')) return '수와 연산';
             if (s.includes('문자와 식') || s.includes('방정식') || s.includes('부등식') || s.includes('다항식') || s.includes('인수분해') || s.includes('이차방정식') || s.includes('일차방정식')) return '문자와 식';
             if (s.includes('함수') || s.includes('이차함수') || s.includes('일차함수') || s.includes('그래프')) return '함수';
@@ -155,7 +131,6 @@
             return s || '기타 단원';
         };
 
-        // 🌟 지능형 시험 정보 파싱 엔진 🌟
         const parseExamInfo = (strToParse) => {
             let str = String(strToParse || '').trim();
             str = str.replace(/_유형분석|유형분석|_학생답안|학생답안/g, '').trim();
@@ -204,227 +179,33 @@
             return { year, school, semester, exam, schoolExamDisplay, fullMatchKey };
         };
 
-        const parsePeriodString = (rawStr, rawGradeStr = '', fileName = '') => {
-            let s = String(fileName || rawStr || '').trim();
-            if (s.includes('_')) s = s.substring(0, s.indexOf('_'));
-            if (s.includes('.')) s = s.substring(0, s.lastIndexOf('.'));
-            if (s.startsWith("기출분석")) s = s.replace("기출분석", "").trim();
-
-            const info = parseExamInfo(s);
-            if (info.school !== "학교미상" || info.semester !== "과정미상" || info.exam !== "시험미상") {
-                const parts = [info.school !== "학교미상" ? info.school : "", info.semester !== "과정미상" ? info.semester : "", info.exam !== "시험미상" ? info.exam : ""].filter(Boolean);
-                return "기출분석 " + parts.join(" ");
+        // 🌟 수정됨: 과정(학년-학기)과 학교가 둘 다 있으면 합쳐서 반환 ('3-2 해강중')
+        const getCourseDisplay = (info) => {
+            if (!info) return '';
+            if (info.semester && info.semester !== "과정미상") {
+                return (info.school && info.school !== "학교미상") ? `${info.semester} ${info.school}` : info.semester;
             }
-            let fallback = s.replace(/^[0-9\s]+/, "").trim(); 
-            return "기출분석 " + (fallback || "미분류");
+            return info.schoolExamDisplay || '';
         };
 
-        // 🌟 수식(LaTeX) 렌더링 컴포넌트 🌟
         const MathText = ({ text, className }) => {
             const nodeRef = useRef(null);
-            
             useEffect(() => {
                 if (nodeRef.current && window.renderMathInElement) {
                     window.renderMathInElement(nodeRef.current, {
-                        delimiters: [
-                            {left: "$$", right: "$$", display: true},
-                            {left: "$", right: "$", display: false}
-                        ],
-                        throwOnError: false,
-                        errorColor: "#cc0000"
+                        delimiters: [{left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false}],
+                        throwOnError: false, errorColor: "#cc0000"
                     });
                 }
             }, [text]);
-            
             if (!text) return null;
-            
             return (
                 <div key={text} ref={nodeRef} className={className}>
                     {text.split('\n').map((line, i) => (
-                        <React.Fragment key={i}>
-                            {line}
-                            {i < text.split('\n').length - 1 && <br />}
-                        </React.Fragment>
+                        <React.Fragment key={i}>{line}{i < text.split('\n').length - 1 && <br />}</React.Fragment>
                     ))}
                 </div>
             );
-        };
-
-        const encodeReportData = (analysisData, studentName) => {
-            const dictMap = new Map();
-            const dict = [];
-            const getDictIdx = (str) => {
-                const s = String(str || '');
-                if (!dictMap.has(s)) { dictMap.set(s, dict.length); dict.push(s); }
-                return dictMap.get(s);
-            };
-
-            const r = analysisData.results.map(res => [
-                res.qNum, getDictIdx(res.majorUnit), getDictIdx(res.minorUnit),
-                getDictIdx(res.type), getDictIdx(res.difficulty), 
-                res.status === 'O' ? 2 : (res.status === '△' ? 1 : 0),
-                res.fullScore || 0, res.earnedScore || 0,
-                getDictIdx(res.concept || '') 
-            ]);
-
-            const payload = { p: analysisData.targetPeriod, n: studentName, d: dict, r: r, s: analysisData.schoolName || '' };
-            try { return window.LZString.compressToEncodedURIComponent(JSON.stringify(payload)); } catch(e) { return null; }
-        };
-
-        const decodeReportData = (encodedStr) => {
-            try {
-                let jsonStr = window.LZString.decompressFromEncodedURIComponent(encodedStr);
-                let payload;
-                if (jsonStr) { payload = JSON.parse(jsonStr); } 
-                else {
-                    const safeStr = encodedStr.replace(/ /g, '+');
-                    try { jsonStr = decodeURIComponent(escape(window.atob(safeStr))); }
-                    catch(e) { jsonStr = decodeURIComponent(window.atob(safeStr)); }
-                    payload = JSON.parse(jsonStr);
-                }
-                if (payload.period) return payload;
-
-                const dict = payload.d;
-                const results = payload.r.map(item => {
-                    const isOldFormat = item.length <= 7;
-                    const fullScore = isOldFormat ? item[6] : item[6];
-                    let status, earnedScore, conceptStr = '';
-
-                    if (isOldFormat) {
-                        status = item[5] === 1 ? 'O' : 'X';
-                        earnedScore = item[5] === 1 ? fullScore : 0;
-                    } else {
-                        status = item[5] === 2 ? 'O' : (item[5] === 1 ? '△' : 'X');
-                        earnedScore = item[7];
-                        if (item.length > 8) conceptStr = dict[item[8]];
-                    }
-
-                    return {
-                        qNum: item[0], majorUnit: dict[item[1]], minorUnit: dict[item[2]],
-                        type: dict[item[3]], difficulty: dict[item[4]], concept: conceptStr,
-                        isCorrect: earnedScore > 0, 
-                        score: fullScore, fullScore: fullScore, earnedScore: earnedScore, status: status
-                    };
-                });
-
-                let totalScoreCalc = 0, maxScore = 0;
-                const unitStats = {};
-                const diffStats = { '상': {total:0, correct:0}, '중': {total:0, correct:0}, '하': {total:0, correct:0} };
-                const typeStats = {};
-
-                results.forEach(r => {
-                    totalScoreCalc += r.earnedScore !== undefined ? r.earnedScore : (r.isCorrect ? r.score : 0); 
-                    maxScore += r.fullScore !== undefined ? r.fullScore : r.score;
-                    
-                    let major = cleanMajorUnit(r.majorUnit);
-
-                    if(!unitStats[major]) unitStats[major] = { total: 0, correct: 0 };
-                    unitStats[major].total++; if(r.earnedScore > 0) unitStats[major].correct++;
-
-                    let d = String(r.difficulty || '중');
-                    if (d.includes('상') || d.includes('어려움') || d.includes('7') || d.includes('8')) d = '상';
-                    else if (d.includes('하') || d.includes('쉬움') || d.includes('1') || d.includes('2')) d = '하';
-                    else d = '중';
-                    
-                    if(!diffStats[d]) diffStats[d] = {total:0, correct:0};
-                    diffStats[d].total++; if(r.earnedScore > 0) diffStats[d].correct++;
-
-                    let t = String(r.type || '기타');
-                    if (t.includes('객관')) t = '객관식'; else if (t.includes('주관') || t.includes('서술')) t = '주관식/서술형'; else t = '기타';
-                    if(!typeStats[t]) typeStats[t] = { total: 0, correct: 0 };
-                    typeStats[t].total++; if(r.earnedScore > 0) typeStats[t].correct++;
-                });
-
-                const totalScore = maxScore > 0 ? Math.round(totalScoreCalc * 10) / 10 : Math.round((results.filter(r => r.isCorrect).length / results.length) * 100);
-                const diffOrder = ['하', '중', '상', '최상'];
-                const unitData = Object.entries(unitStats).map(([name, stats]) => ({ name, ...stats }));
-                
-                const diffData = Object.entries(diffStats).map(([name, stats]) => {
-                    let itemColor = '#10b981'; 
-                    if (name === '상') itemColor = '#f97316'; 
-                    else if (name === '중') itemColor = '#10b981'; 
-                    else if (name === '하') itemColor = '#fde047'; 
-                    return { name, ...stats, color: itemColor };
-                }).filter(d=>d.total>0).sort((a,b) => diffOrder.indexOf(b.name) - diffOrder.indexOf(a.name));
-
-                const analysisDataProxy = { unitData, totalScore, results, targetPeriod: payload.p, typeStats };
-                const comments = generateAIComment(analysisDataProxy);
-
-                return {
-                    period: payload.p, name: payload.n, score: totalScore, schoolName: payload.s || '',
-                    results: results, units: unitData, diffs: diffData, types: typeStats, comments: comments
-                };
-            } catch(e) { console.error("데이터 디코딩 실패:", e); return null; }
-        };
-
-        const generateAIComment = (analysisData) => {
-            if (!analysisData) return {};
-            const { unitData, totalScore, results } = analysisData;
-            
-            const maxScore = results.reduce((acc, r) => acc + (r.fullScore || r.score || r.s || 0), 0);
-            const percentage = maxScore > 0 ? (totalScore / maxScore) * 100 : (results.filter(r => r.isCorrect).length / results.length) * 100;
-            
-            const unitsWithPct = unitData.map(u => ({ name: u.name, pct: (u.correct / u.total) * 100 })).sort((a, b) => b.pct - a.pct);
-
-            let strongText = "-", weakText = "-", primaryWeakUnit = "-";
-
-            if (unitsWithPct.length > 0) {
-                const bestScore = unitsWithPct[0].pct;
-                const strongUnits = unitsWithPct.filter(u => u.pct === bestScore || u.pct >= 90).slice(0, 2);
-                strongText = strongUnits.map(u => u.name).join(', ');
-
-                const weakCandidates = unitsWithPct.filter(u => u.pct <= 70).sort((a, b) => a.pct - b.pct);
-                if (weakCandidates.length > 0) {
-                    weakText = weakCandidates.slice(0, 2).map(u => u.name).join(', ');
-                    primaryWeakUnit = weakCandidates[0].name;
-                } else {
-                    const nextWeak = unitsWithPct.filter(u => u.pct < 100).sort((a, b) => a.pct - b.pct);
-                    if (nextWeak.length > 0) {
-                        weakText = "전반적으로 양호함";
-                        primaryWeakUnit = nextWeak[0].name;
-                    } else {
-                        weakText = "취약 단원 없음 (완벽함!)";
-                        primaryWeakUnit = unitsWithPct[unitsWithPct.length - 1]?.name || "-";
-                    }
-                }
-            }
-
-            const kiceGuidelines = {
-                "수와 연산": "실수의 체계와 성질을 명확히 이해하고, 빠르고 정확한 연산을 요구합니다.",
-                "문자와 식": "주어진 조건을 수식으로 정확히 표현하고, 다항식의 전개와 인수분해, 그리고 방정식 및 부등식을 논리적으로 해결하는 능력이 필요합니다.",
-                "함수": "함수의 정의를 바탕으로 그래프를 그리고, x절편, y절편, 기울기, 꼭짓점 등의 기하학적 의미를 파악하는 것이 중요합니다.",
-                "기하": "도형의 성질(합동, 닮음, 피타고라스 정리, 삼각비, 원 등)을 이용하여 보조선을 긋고 길이나 넓이를 구하는 공간 지각력이 요구됩니다.",
-                "확률과 통계": "경우의 수를 빠짐없이 구하고, 확률의 기본 성질 및 대푯값과 산포도의 의미를 바탕으로 실생활 상황을 해석하는 사고방식이 필요합니다."
-            };
-
-            let matchedGuideline = kiceGuidelines[primaryWeakUnit] || "전반적인 수학 기본 개념을 탄탄히 다지는 것이 중요합니다.";
-
-            let method = "";
-            if (percentage >= 100) {
-                method = `모든 단원의 개념을 완벽하게 이해하고 있습니다! 🎉 현재의 훌륭한 학습 패턴을 유지하며, 심화 문제나 선행 학습을 가볍게 시작해 보는 것을 적극 추천합니다.`;
-                weakText = "취약 단원 없음 (완벽함!)";
-            }
-            else if (percentage >= 90) {
-                if (weakText === "취약 단원 없음 (완벽함!)" || weakText === "전반적으로 양호함") {
-                    method = `전체적인 개념 이해도가 매우 우수합니다. 간혹 실수하는 문제나 고난도 심화 문제를 집중적으로 풀어보며 100점을 향한 훈련을 진행하세요.`;
-                    weakText = "전반적으로 우수함";
-                } else {
-                    method = `전체적인 개념 이해도가 매우 우수합니다. 간혹 실수하는 문제나 고난도 심화 문제를 집중적으로 풀어보며 100점을 향한 훈련을 진행하세요.\n\n📌 [KICE 평가원 기준 학습 조언]\n${matchedGuideline}`;
-                }
-            }
-            else if (percentage >= 70) {
-                if (weakText === "취약 단원 없음 (완벽함!)" || weakText === "전반적으로 양호함") {
-                    method = `기본적인 개념은 잘 잡혀 있습니다. 틀린 문제들의 오답 노트를 작성하고 기본 예제를 다시 한 번 풀어보며 실수를 줄여보세요.`;
-                    weakText = "전반적으로 양호함";
-                } else {
-                    method = `기본적인 개념은 잘 잡혀 있으나 특정 단원([${weakText}])에서 오답이 발생하고 있습니다.\n\n📌 [KICE 평가원 기준 학습 조언]\n${matchedGuideline}\n\n위 지침을 바탕으로 오답 노트를 작성하며 빈틈을 메워주세요.`;
-                }
-            }
-            else {
-                method = `전반적인 기초 개념 다지기가 우선되어야 합니다. 어려운 문제보다는 교과서 위주의 기본 문제를 반복해서 풀며 원리를 정확히 이해하는 학습이 필요합니다.\n\n📌 [최우선 보완 단원 조언]\n${matchedGuideline}`;
-            }
-
-            return { strong: strongText, weak: weakText, method };
         };
 
         const Icon = ({ name, size = 20, className = "" }) => {
@@ -580,7 +361,7 @@
                         <div className="px-4 -mt-10 relative z-20 mb-6">
                             <div className="bg-white rounded-2xl shadow-xl border border-slate-100 p-5 flex items-stretch gap-4">
                                 <div className="flex flex-col items-center justify-center flex-shrink-0 pr-4 border-r border-slate-100 min-w-[90px]">
-                                    <span className="text-[12px] font-bold text-slate-500 mb-1">{data.name} 학생</span>
+                                    <span className="text-[12px] font-bold text-slate-500 mb-1">{data.name}</span>
                                     <div className="flex items-baseline gap-0.5 text-indigo-600">
                                         <span className="text-4xl font-black tracking-tighter">{data.score}</span>
                                         <span className="text-sm font-bold">점</span>
@@ -650,9 +431,184 @@
             );
         };
 
-        function App() {
-            const apiKey = ""; 
+        const generateAIComment = (analysisData) => {
+            if (!analysisData) return {};
+            const { unitData, totalScore, results } = analysisData;
             
+            const maxScore = results.reduce((acc, r) => acc + (r.fullScore || r.score || r.s || 0), 0);
+            const percentage = maxScore > 0 ? (totalScore / maxScore) * 100 : (results.filter(r => r.isCorrect).length / results.length) * 100;
+            
+            const unitsWithPct = unitData.map(u => ({ name: u.name, pct: (u.correct / u.total) * 100 })).sort((a, b) => b.pct - a.pct);
+
+            let strongText = "-", weakText = "-", primaryWeakUnit = "-";
+
+            if (unitsWithPct.length > 0) {
+                const bestScore = unitsWithPct[0].pct;
+                const strongUnits = unitsWithPct.filter(u => u.pct === bestScore || u.pct >= 90).slice(0, 2);
+                strongText = strongUnits.map(u => u.name).join(', ');
+
+                const weakCandidates = unitsWithPct.filter(u => u.pct <= 70).sort((a, b) => a.pct - b.pct);
+                if (weakCandidates.length > 0) {
+                    weakText = weakCandidates.slice(0, 2).map(u => u.name).join(', ');
+                    primaryWeakUnit = weakCandidates[0].name;
+                } else {
+                    const nextWeak = unitsWithPct.filter(u => u.pct < 100).sort((a, b) => a.pct - b.pct);
+                    if (nextWeak.length > 0) {
+                        weakText = "전반적으로 양호함";
+                        primaryWeakUnit = nextWeak[0].name;
+                    } else {
+                        weakText = "취약 단원 없음 (완벽함!)";
+                        primaryWeakUnit = unitsWithPct[unitsWithPct.length - 1]?.name || "-";
+                    }
+                }
+            }
+
+            const kiceGuidelines = {
+                "수와 연산": "실수의 체계와 성질을 명확히 이해하고, 빠르고 정확한 연산을 요구합니다.",
+                "문자와 식": "주어진 조건을 수식으로 정확히 표현하고, 다항식의 전개와 인수분해, 그리고 방정식 및 부등식을 논리적으로 해결하는 능력이 필요합니다.",
+                "함수": "함수의 정의를 바탕으로 그래프를 그리고, x절편, y절편, 기울기, 꼭짓점 등의 기하학적 의미를 파악하는 것이 중요합니다.",
+                "기하": "도형의 성질(합동, 닮음, 피타고라스 정리, 삼각비, 원 등)을 이용하여 보조선을 긋고 길이나 넓이를 구하는 공간 지각력이 요구됩니다.",
+                "확률과 통계": "경우의 수를 빠짐없이 구하고, 확률의 기본 성질 및 대푯값과 산포도의 의미를 바탕으로 실생활 상황을 해석하는 사고방식이 필요합니다."
+            };
+
+            let matchedGuideline = kiceGuidelines[primaryWeakUnit] || "전반적인 수학 기본 개념을 탄탄히 다지는 것이 중요합니다.";
+
+            let method = "";
+            if (percentage >= 100) {
+                method = `모든 단원의 개념을 완벽하게 이해하고 있습니다! 🎉 현재의 훌륭한 학습 패턴을 유지하며, 심화 문제나 선행 학습을 가볍게 시작해 보는 것을 적극 추천합니다.`;
+                weakText = "취약 단원 없음 (완벽함!)";
+            }
+            else if (percentage >= 90) {
+                if (weakText === "취약 단원 없음 (완벽함!)" || weakText === "전반적으로 양호함") {
+                    method = `전체적인 개념 이해도가 매우 우수합니다. 간혹 실수하는 문제나 고난도 심화 문제를 집중적으로 풀어보며 100점을 향한 훈련을 진행하세요.`;
+                    weakText = "전반적으로 우수함";
+                } else {
+                    method = `전체적인 개념 이해도가 매우 우수합니다. 간혹 실수하는 문제나 고난도 심화 문제를 집중적으로 풀어보며 100점을 향한 훈련을 진행하세요.\n\n📌 [KICE 평가원 기준 학습 조언]\n${matchedGuideline}`;
+                }
+            }
+            else if (percentage >= 70) {
+                if (weakText === "취약 단원 없음 (완벽함!)" || weakText === "전반적으로 양호함") {
+                    method = `기본적인 개념은 잘 잡혀 있습니다. 틀린 문제들의 오답 노트를 작성하고 기본 예제를 다시 한 번 풀어보며 실수를 줄여보세요.`;
+                    weakText = "전반적으로 양호함";
+                } else {
+                    method = `기본적인 개념은 잘 잡혀 있으나 특정 단원([${weakText}])에서 오답이 발생하고 있습니다.\n\n📌 [KICE 평가원 기준 학습 조언]\n${matchedGuideline}\n\n위 지침을 바탕으로 오답 노트를 작성하며 빈틈을 메워주세요.`;
+                }
+            }
+            else {
+                method = `전반적인 기초 개념 다지기가 우선되어야 합니다. 어려운 문제보다는 교과서 위주의 기본 문제를 반복해서 풀며 원리를 정확히 이해하는 학습이 필요합니다.\n\n📌 [최우선 보완 단원 조언]\n${matchedGuideline}`;
+            }
+
+            return { strong: strongText, weak: weakText, method };
+        };
+
+        const encodeReportData = (analysisData, studentName) => {
+            const dictMap = new Map();
+            const dict = [];
+            const getDictIdx = (str) => {
+                const s = String(str || '');
+                if (!dictMap.has(s)) { dictMap.set(s, dict.length); dict.push(s); }
+                return dictMap.get(s);
+            };
+
+            const r = analysisData.results.map(res => [
+                res.qNum, getDictIdx(res.majorUnit), getDictIdx(res.minorUnit),
+                getDictIdx(res.type), getDictIdx(res.difficulty), 
+                res.status === 'O' ? 2 : (res.status === '△' ? 1 : 0),
+                res.fullScore || 0, res.earnedScore || 0,
+                getDictIdx(res.concept || '') 
+            ]);
+
+            const payload = { p: analysisData.targetPeriod, n: studentName, d: dict, r: r, s: analysisData.schoolName || '' };
+            try { return window.LZString.compressToEncodedURIComponent(JSON.stringify(payload)); } catch(e) { return null; }
+        };
+
+        const decodeReportData = (encodedStr) => {
+            try {
+                let jsonStr = window.LZString.decompressFromEncodedURIComponent(encodedStr);
+                let payload;
+                if (jsonStr) { payload = JSON.parse(jsonStr); } 
+                else {
+                    const safeStr = encodedStr.replace(/ /g, '+');
+                    try { jsonStr = decodeURIComponent(escape(window.atob(safeStr))); }
+                    catch(e) { jsonStr = decodeURIComponent(window.atob(safeStr)); }
+                    payload = JSON.parse(jsonStr);
+                }
+                if (payload.period) return payload;
+
+                const dict = payload.d;
+                const results = payload.r.map(item => {
+                    const isOldFormat = item.length <= 7;
+                    const fullScore = isOldFormat ? item[6] : item[6];
+                    let status, earnedScore, conceptStr = '';
+
+                    if (isOldFormat) {
+                        status = item[5] === 1 ? 'O' : 'X';
+                        earnedScore = item[5] === 1 ? fullScore : 0;
+                    } else {
+                        status = item[5] === 2 ? 'O' : (item[5] === 1 ? '△' : 'X');
+                        earnedScore = item[7];
+                        if (item.length > 8) conceptStr = dict[item[8]];
+                    }
+
+                    return {
+                        qNum: item[0], majorUnit: dict[item[1]], minorUnit: dict[item[2]],
+                        type: dict[item[3]], difficulty: dict[item[4]], concept: conceptStr,
+                        isCorrect: earnedScore > 0, 
+                        score: fullScore, fullScore: fullScore, earnedScore: earnedScore, status: status
+                    };
+                });
+
+                let totalScoreCalc = 0, maxScore = 0;
+                const unitStats = {};
+                const diffStats = { '상': {total:0, correct:0}, '중': {total:0, correct:0}, '하': {total:0, correct:0} };
+                const typeStats = {};
+
+                results.forEach(r => {
+                    totalScoreCalc += r.earnedScore !== undefined ? r.earnedScore : (r.isCorrect ? r.score : 0); 
+                    maxScore += r.fullScore !== undefined ? r.fullScore : r.score;
+                    
+                    let major = cleanMajorUnit(r.majorUnit);
+
+                    if(!unitStats[major]) unitStats[major] = { total: 0, correct: 0 };
+                    unitStats[major].total++; if(r.earnedScore > 0) unitStats[major].correct++;
+
+                    let d = String(r.difficulty || '중');
+                    if (d.includes('상') || d.includes('어려움') || d.includes('7') || d.includes('8')) d = '상';
+                    else if (d.includes('하') || d.includes('쉬움') || d.includes('1') || d.includes('2')) d = '하';
+                    else d = '중';
+                    
+                    if(!diffStats[d]) diffStats[d] = {total:0, correct:0};
+                    diffStats[d].total++; if(r.earnedScore > 0) diffStats[d].correct++;
+
+                    let t = String(r.type || '기타');
+                    if (t.includes('객관')) t = '객관식'; else if (t.includes('주관') || t.includes('서술')) t = '주관식/서술형'; else t = '기타';
+                    if(!typeStats[t]) typeStats[t] = { total: 0, correct: 0 };
+                    typeStats[t].total++; if(r.earnedScore > 0) typeStats[t].correct++;
+                });
+
+                const totalScore = maxScore > 0 ? Math.round(totalScoreCalc * 10) / 10 : Math.round((results.filter(r => r.isCorrect).length / results.length) * 100);
+                const diffOrder = ['하', '중', '상', '최상'];
+                const unitData = Object.entries(unitStats).map(([name, stats]) => ({ name, ...stats }));
+                
+                const diffData = Object.entries(diffStats).map(([name, stats]) => {
+                    let itemColor = '#10b981'; 
+                    if (name === '상') itemColor = '#f97316'; 
+                    else if (name === '중') itemColor = '#10b981'; 
+                    else if (name === '하') itemColor = '#fde047'; 
+                    return { name, ...stats, color: itemColor };
+                }).filter(d=>d.total>0).sort((a,b) => diffOrder.indexOf(b.name) - diffOrder.indexOf(a.name));
+
+                const analysisDataProxy = { unitData, totalScore, results, targetPeriod: payload.p, typeStats };
+                const comments = generateAIComment(analysisDataProxy);
+
+                return {
+                    period: payload.p, name: payload.n, score: totalScore, schoolName: payload.s || '',
+                    results: results, units: unitData, diffs: diffData, types: typeStats, comments: comments
+                };
+            } catch(e) { console.error("데이터 디코딩 실패:", e); return null; }
+        };
+
+        function App() {
             const urlParams = new URLSearchParams(window.location.search);
             const reportParam = urlParams.get('report');
             
@@ -770,9 +726,20 @@
             }, [reportParam]);
 
             const optionsData = useMemo(() => {
-                const studentCourses = [...new Set(students.map(s => s.semester !== '과정미상' ? s.semester : s.schoolExamDisplay))].filter(Boolean).sort();
-                const studentExams = [...new Set(students.filter(s => (s.semester !== '과정미상' ? s.semester : s.schoolExamDisplay) === filters.studentCourse).map(s => s.exam !== '시험미상' ? s.exam : '기타'))].filter(Boolean);
-                const studentNames = [...new Set(students.filter(s => (s.semester !== '과정미상' ? s.semester : s.schoolExamDisplay) === filters.studentCourse && (s.exam !== '시험미상' ? s.exam : '기타') === filters.studentExam).map(s => s.name))].sort();
+                // 🌟 과정과 시험 시기 콤보박스는 '시험 데이터'와 '학생 데이터' 양쪽에서 정보를 가져와 
+                // 학생 데이터가 없어도 미리 선택할 수 있도록 수정
+                const courseSet = new Set();
+                students.forEach(s => courseSet.add(getCourseDisplay(s)));
+                exams.forEach(e => courseSet.add(getCourseDisplay(e)));
+                const studentCourses = [...courseSet].filter(Boolean).sort();
+
+                const examSet = new Set();
+                students.filter(s => getCourseDisplay(s) === filters.studentCourse).forEach(s => examSet.add(s.exam !== '시험미상' ? s.exam : '기타'));
+                exams.filter(e => getCourseDisplay(e) === filters.studentCourse).forEach(e => examSet.add(e.exam !== '시험미상' ? e.exam : '기타'));
+                const studentExams = [...examSet].filter(Boolean);
+
+                // 🌟 학생 이름은 오직 업로드된 '학생 데이터'에서만 가져옴
+                const studentNames = [...new Set(students.filter(s => getCourseDisplay(s) === filters.studentCourse && (s.exam !== '시험미상' ? s.exam : '기타') === filters.studentExam).map(s => s.name))].sort();
 
                 const examYears = [...new Set(exams.map(e => e.year))].filter(y => y && y !== "미상").sort();
                 const examSchoolExams = [...new Set(exams.filter(e => e.year === filters.examYear).map(e => e.schoolExamDisplay))].filter(Boolean).sort();
@@ -790,7 +757,7 @@
                 } else if (viewMode === 'exam') {
                     if (!filters.examYear && optionsData.examYears.length > 0) {
                         setFilters(p => ({ ...p, examYear: optionsData.examYears[optionsData.examYears.length - 1] }));
-                    } else if (optionsData.examSchoolExams.length > 0 && (!filters.examSchoolExams.includes(filters.examSchoolExam))) {
+                    } else if (optionsData.examSchoolExams.length > 0 && !optionsData.examSchoolExams.includes(filters.examSchoolExam)) {
                         setFilters(p => ({ ...p, examSchoolExam: optionsData.examSchoolExams[0] }));
                     }
                 }
@@ -800,8 +767,9 @@
             const analysisData = useMemo(() => {
                 if (viewMode !== 'student' || !filters.studentCourse || !filters.studentExam || !filters.studentName) return null;
                 
+                // 🌟 수정됨: getCourseDisplay(s)를 기준으로 타겟 학생을 찾도록 로직 통일
                 const targetStudent = students.find(s => s.name === filters.studentName && 
-                    (s.semester !== "과정미상" ? s.semester : s.schoolExamDisplay) === filters.studentCourse && 
+                    getCourseDisplay(s) === filters.studentCourse && 
                     (s.exam !== "시험미상" ? s.exam : "기타") === filters.studentExam);
                     
                 if (!targetStudent) return null;
@@ -1036,15 +1004,14 @@
 
             const comments = useMemo(() => generateAIComment(analysisData), [analysisData]);
 
-            // 🌟 1단계: API 통신 헬퍼 (지수 백오프 타임아웃 방어 및 스키마 간소화) 🌟
-            const callGeminiStaged = async (parts, stageMsg) => {
+            const callGeminiStaged = async (parts, schemaObj, stageMsg) => {
                 showToast(stageMsg, "info");
-                
                 let url = GEMINI_PROXY_URL;
                 const payload = {
                     contents: [{ role: "user", parts }],
                     generationConfig: {
-                        responseMimeType: "application/json"
+                        responseMimeType: "application/json",
+                        responseSchema: schemaObj
                     }
                 };
 
@@ -1054,35 +1021,21 @@
                     try {
                         const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                         if (!response.ok) {
-                            let errTxt = "";
-                            try { errTxt = await response.text(); } catch(e) {}
-                            console.error(`API Error (Status: ${response.status}):`, errTxt);
-                            throw new Error(`API Fail: HTTP ${response.status}`);
+                            const errTxt = await response.text();
+                            console.error("API Error:", errTxt);
+                            throw new Error(`API Fail: ${response.status}`);
                         }
                         const data = await response.json();
                         if(data && data.candidates && data.candidates[0].content) {
                             let text = data.candidates[0].content.parts[0].text;
-                            
-                            const firstBracket = text.indexOf('[');
-                            const lastBracket = text.lastIndexOf(']');
-                            
-                            if (firstBracket !== -1 && lastBracket !== -1 && lastBracket >= firstBracket) {
-                                text = text.substring(firstBracket, lastBracket + 1);
-                                return JSON.parse(text);
-                            } else {
-                                text = text.replace(/```json/g, '').replace(/```/g, '').trim();
-                                const parsed = JSON.parse(text);
-                                return parsed.results || parsed || [];
-                            }
+                            text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+                            const parsed = JSON.parse(text);
+                            return parsed.results || parsed || [];
                         }
                         return [];
                     } catch(e) {
                         retries--;
-                        console.warn(`API 재시도 남은 횟수: ${retries} (에러: ${e.message})`);
-                        if(retries === 0) {
-                            showToast(`통신 실패: ${e.message}. 잠시 후 다시 시도해주세요.`, "error");
-                            throw e;
-                        }
+                        if(retries === 0) throw e;
                         await new Promise(r => setTimeout(r, delay));
                         delay *= 2;
                     }
@@ -1090,7 +1043,6 @@
                 return [];
             };
 
-            // 🌟 2단계: 파일 업로드 메인 함수 (단계별 파이프라인 결합) 🌟
             const handleFileUpload = async (e) => {
                 const files = Array.from(e.target.files);
                 if (files.length === 0) return;
@@ -1108,7 +1060,6 @@
                 setIsGenerating(true);
 
                 try {
-                    // (1) 엑셀 파일 처리 (마스터DB 및 학생 데이터)
                     for (const file of otherFiles) {
                         if (file.name.toLowerCase().endsWith('.csv') || file.name.toLowerCase().endsWith('.tsv') || file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.xls')) {
                             await new Promise((resolve) => {
@@ -1304,7 +1255,7 @@
                         } catch (e) { console.error("Firestore Save Error", e); }
                     }
 
-                    // (2) 🌟 이미지 + PDF 통합 파이프라인 (안정성 극대화) 🌟
+                    // 🌟 이미지 + PDF 통합 파이프라인 (타임아웃 방어 적용)
                     if (imageFiles.length > 0 || pdfFile) {
                         let pdfBase64 = null;
                         if (pdfFile) {
@@ -1325,9 +1276,8 @@
                         let jsonResult = [];
                         let baseData = [];
 
-                        // [STEP 1] 가벼운 이미지 분석으로 메타데이터 우선 추출
                         if (imageFiles.length > 0) {
-                            const prompt1 = "첨부된 분석표 이미지에서 문항별 데이터를 추출하세요.\n1. 문제 번호(qNum)\n2. 문항분류코드(code)\n3. 배점(score)\n4. 난이도(difficulty)\n\n출력은 반드시 순수 JSON 객체(키: 'results') 형태만 반환하세요.";
+                            const prompt1 = "첨부된 분석표 이미지에서 각 행의 데이터를 추출하세요. 1. 문제 번호(qNum), 2. 문항분류코드(code), 3. 배점(score), 4. 난이도(difficulty)를 파악하세요. 결과를 순수 JSON 객체(키: 'results') 형태로 반환하세요.";
                             const parts1 = [{ text: prompt1 }];
                             for(const file of imageFiles) {
                                 const base64 = await new Promise((resolve) => {
@@ -1337,21 +1287,56 @@
                                 });
                                 parts1.push({ inlineData: { mimeType: file.type, data: base64 } });
                             }
-                            
-                            // 스키마 인자 제거, 메시지 추가
-                            baseData = await callGeminiStaged(parts1, "1/2단계: 분석표에서 문항별 기본 정보(배점, 난이도 등) 추출 중...");
+
+                            const schema1 = {
+                                type: "OBJECT",
+                                properties: {
+                                    results: {
+                                        type: "ARRAY",
+                                        items: {
+                                            type: "OBJECT",
+                                            properties: {
+                                                qNum: { type: "STRING" },
+                                                code: { type: "STRING" },
+                                                score: { type: "STRING" },
+                                                difficulty: { type: "STRING" }
+                                            }
+                                        }
+                                    }
+                                }
+                            };
+                            baseData = await callGeminiStaged(parts1, schema1, "1/2단계: 분석표에서 문항별 기본 정보(배점, 난이도 등) 추출 중...");
                         }
 
-                        // [STEP 2] 무거운 PDF 분석으로 본문/정답 추출 및 병합
                         if (pdfFile) {
-                            // 프롬프트를 획기적으로 줄여 타임아웃 방지
-                            const prompt2 = "첨부된 시험지 PDF에서 각 문항 번호(qNum)에 대한 다음 4가지를 추출하세요.\n1. 정답(answer) - 객관식은 번호, 주관식은 단답/숫자형\n2. 출제 개념(concept)\n3. 어려운 포인트(aiPoint)\n4. 맞춤형 풀이 전략(aiStrategy)\n\n※ 주의사항: 텍스트 생성 타임아웃을 막기 위해 3번과 4번 항목은 핵심만 1~2문장으로 아주 짧게 요약하세요. 수식은 반드시 LaTeX 형식($ $)을 사용하세요.\n출력은 반드시 순수 JSON 객체(키: 'results') 형태만 반환하세요.";
+                            const prompt2 = "첨부된 시험지 PDF 원문을 분석하세요. 각 문항 번호(qNum)에 해당하는 1. '정답(answer)' (객관식은 번호, 주관식은 단답/숫자형), 2. 출제내용(concept), 3. 어려운 포인트(aiPoint), 4. 맞춤형 풀이 전략(aiStrategy)을 작성하세요. 모든 수학 기호는 반드시 LaTeX($ 또는 $$)로 감싸고, 결과를 순수 JSON 객체(키: 'results') 형태로 반환하세요.";
                             const parts2 = [{ text: prompt2 }];
                             parts2.push({ inlineData: { mimeType: "application/pdf", data: pdfBase64 } });
-                            
-                            const pdfData = await callGeminiStaged(parts2, "2/2단계: 시험지 PDF 정밀 분석 중 (정답/풀이전략 매칭 - 최대 1~2분 소요)...");
 
-                            // qNum 기준으로 Map 병합 (숫자로 파싱하여 "01"과 "1" 매칭)
+                            const schema2 = {
+                                type: "OBJECT",
+                                properties: {
+                                    results: {
+                                        type: "ARRAY",
+                                        items: {
+                                            type: "OBJECT",
+                                            properties: {
+                                                qNum: { type: "STRING" },
+                                                answer: { type: "STRING", description: "정답" },
+                                                concept: { type: "STRING" },
+                                                majorUnit: { type: "STRING" },
+                                                minorUnit: { type: "STRING" },
+                                                aiPoint: { type: "STRING" },
+                                                aiConcept: { type: "STRING" },
+                                                aiStrategy: { type: "STRING" }
+                                            }
+                                        }
+                                    }
+                                }
+                            };
+                            
+                            const pdfData = await callGeminiStaged(parts2, schema2, "2/2단계: 시험지 PDF 정밀 분석 중 (정답/풀이전략 매칭 - 최대 1~2분 소요)...");
+
                             const map = new Map();
                             [...baseData, ...pdfData].forEach(item => {
                                 const key = parseInt(String(item.qNum).replace(/[^0-9]/g, '')) || item.qNum;
@@ -1408,16 +1393,42 @@
 
                     addedStudents = addedStudents.map(s => {
                         let finalPeriod = s.period;
-                        let isExactMatch = currentTotalExams.some(ex => ex.period === finalPeriod);
+                        const studentInfo = parseExamInfo(s.period);
                         
-                        if (!isExactMatch && currentTotalExams.length > 0) {
+                        let bestMatch = null;
+                        let maxScore = 0;
+
+                        for (const ex of currentTotalExams) {
+                            if (ex.period === finalPeriod) {
+                                bestMatch = ex;
+                                maxScore = 999;
+                                break;
+                            }
+                            const exInfo = parseExamInfo(ex.fileName || ex.period);
+                            let score = 0;
+                            
+                            // 파일명에서 분석한 (과정, 학교, 시험종류, 연도) 정보를 대조하여 가중치 점수 부여
+                            if (studentInfo.semester !== "과정미상" && studentInfo.semester === exInfo.semester) score += 10;
+                            if (studentInfo.school !== "학교미상" && studentInfo.school === exInfo.school) score += 10;
+                            if (studentInfo.exam !== "시험미상" && studentInfo.exam === exInfo.exam) score += 5;
+                            if (studentInfo.year !== "미상" && studentInfo.year === exInfo.year) score += 2;
+                            
+                            // 과정(3-2)이나 학교(해강중) 중 하나라도 일치하면 유력한 후보로 선정
+                            if (score > maxScore && score >= 10) { 
+                                maxScore = score;
+                                bestMatch = ex;
+                            }
+                        }
+
+                        if (bestMatch) {
+                            finalPeriod = bestMatch.period;
+                        } else {
                             const semPrefix = finalPeriod ? finalPeriod.split(' ')[0] : '';
                             const partialMatch = currentTotalExams.find(ex => ex.period.startsWith(semPrefix));
                             if (partialMatch) finalPeriod = partialMatch.period;
                             else finalPeriod = fallbackPeriod;
-                        } else if (!finalPeriod || finalPeriod === '-' || finalPeriod.split(' ').length < 2) {
-                            finalPeriod = fallbackPeriod;
                         }
+                        
                         s.period = finalPeriod;
                         return s;
                     });
@@ -1427,6 +1438,31 @@
                         addedExams.forEach(ex => {
                             db.collection('artifacts').doc(appId).collection('public').doc('data').collection('exams').doc(`${ex.period}_${ex.qNum}`).set(ex).catch(e => console.warn(e));
                         });
+                        
+                        // 🌟 성취도 평가 파일일 경우 가짜 학생 데이터를 만들지 않고, 
+                        // 파일명 정보('3-2 해강중', '중간')만 필터에 띄워주고 학생 이름은 공란 유지
+                        const achivementExam = addedExams.find(ex => ex.fileName && (ex.fileName.includes('성취도 평가') || ex.fileName.includes('성취도평가')));
+                        if (achivementExam) {
+                            const info = parseExamInfo(achivementExam.fileName || achivementExam.period);
+                            
+                            setFilters(prev => ({
+                                ...prev,
+                                studentCourse: getCourseDisplay(info), // '3-2 해강중' 등 결합
+                                studentExam: info.exam !== "시험미상" ? info.exam : '기타',
+                                studentName: '' // 🌟 학생 이름은 반드시 공란 (이후 학생 파일 업로드 시 생성)
+                            }));
+                            setViewMode('student');
+                        } else {
+                            const justAdded = addedExams[0];
+                            const info = parseExamInfo(justAdded.fileName || justAdded.period);
+                            
+                            setFilters(prev => ({
+                                ...prev,
+                                examYear: info.year !== "미상" ? info.year : '',
+                                examSchoolExam: info.schoolExamDisplay !== "분석 시험" ? info.schoolExamDisplay : ''
+                            }));
+                            setViewMode('exam'); 
+                        }
                     }
 
                     if (addedStudents.length > 0) {
@@ -1435,45 +1471,18 @@
                             const saveObj = { name: s.name, period: s.period, responses: s.responses };
                             db.collection('artifacts').doc(appId).collection('public').doc('data').collection('students').doc(`${s.name}_${s.period}`).set(saveObj).catch(e => console.warn(e));
                         });
-                    }
 
-                    // 🌟 사용자 요청: 파일명 분석을 통한 자동 탭 이동 및 필터 설정 🌟
-                    const representativeFile = pdfFile || imageFiles[0] || otherFiles[0];
-                    if (representativeFile) {
-                        const fileName = representativeFile.name.replace(/\.[^/.]+$/, "").trim(); // 확장자 제거
-                        const info = parseExamInfo(fileName);
+                        // 🌟 학생 데이터가 업로드되면 자동으로 해당 학생의 결과를 즉시 띄워주기
+                        const lastStudent = addedStudents[addedStudents.length - 1];
+                        const info = parseExamInfo(lastStudent.period);
                         
-                        setFilters(prev => {
-                            let nextFilters = { ...prev };
-                            
-                            // 1. 기출 분석 탭 필터 기본 세팅
-                            if (info.year !== "미상") nextFilters.examYear = info.year;
-                            if (info.schoolExamDisplay !== "분석 시험") nextFilters.examSchoolExam = info.schoolExamDisplay;
-                            
-                            // 2. '성취도 평가' 조건부 로직 적용
-                            if (fileName.includes('성취도 평가')) {
-                                // 과정 선택 (3-2 등)
-                                if (fileName.includes('3-2')) nextFilters.studentCourse = '3-2';
-                                else if (info.semester !== "과정미상") nextFilters.studentCourse = info.semester;
-                                
-                                // 시험 시기 (중간 등)
-                                if (fileName.includes('중간')) nextFilters.studentExam = '중간';
-                                else if (info.exam !== "시험미상") nextFilters.studentExam = info.exam;
-                                
-                                // 학생이 방금 추가되었다면 첫 번째 학생 자동 선택
-                                if (addedStudents.length > 0) {
-                                    nextFilters.studentName = addedStudents[0].name;
-                                }
-                            }
-                            return nextFilters;
-                        });
-
-                        // 3. '성취도 평가'가 포함되어 있으면 '개별 성취도(student)' 탭으로 이동
-                        if (fileName.includes('성취도 평가')) {
-                            setViewMode('student');
-                        } else if (addedExams.length > 0) {
-                            setViewMode('exam');
-                        }
+                        setFilters(prev => ({
+                            ...prev,
+                            studentCourse: getCourseDisplay(info) || prev.studentCourse,
+                            studentExam: info.exam !== "시험미상" ? info.exam : (prev.studentExam || '기타'),
+                            studentName: lastStudent.name
+                        }));
+                        setViewMode('student');
                     }
 
                     let msg = [];
@@ -1486,8 +1495,8 @@
                     else showToast(`❌ 처리된 데이터가 없습니다. 파일 형태를 확인하세요.`, 'error');
 
                 } catch(error) {
-                    console.error("최종 에러:", error);
-                    // 에러가 발생하더라도 이전에 올린 데이터가 초기화되지 않도록 유지
+                    console.error(error);
+                    showToast("통신 지연 또는 오류가 발생했습니다. 잠시 후 재시도하세요.", "error");
                 } finally {
                     setIsGenerating(false);
                     e.target.value = '';
@@ -1513,11 +1522,7 @@
                 const worksheet = window.XLSX.utils.json_to_sheet(dataForExcel);
                 
                 worksheet['!cols'] = [
-                    { wpx: 60 }, 
-                    { wpx: 60 }, 
-                    { wpx: 250 },
-                    { wpx: 300 },
-                    { wpx: 60 }  
+                    { wpx: 60 }, { wpx: 60 }, { wpx: 250 }, { wpx: 300 }, { wpx: 60 }  
                 ];
 
                 const reportData = examReportData.reportContent;
@@ -1706,6 +1711,7 @@
                         </div>
                     )}
 
+                    {}
                     <div className="bg-white border-b shadow-sm p-4 sticky top-0 z-40 no-print flex flex-wrap gap-4 items-center justify-between">
                         <div className="flex items-center gap-6 w-full max-w-[850px]">
                             <h1 className="text-xl font-black text-indigo-900 flex items-center gap-2 mr-2 shrink-0">
@@ -1787,7 +1793,7 @@
                         </div>
                     </div>
 
-                    {/* 🌟 데이터 관리 및 설정 모달창 🌟 */}
+                    {}
                     {showDataModal && (
                         <div className="fixed inset-0 bg-slate-900/40 z-[999999] flex items-center justify-center p-4 backdrop-blur-sm no-print">
                             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[85vh] animate-in fade-in zoom-in duration-200">
@@ -1855,6 +1861,7 @@
                         </div>
                     )}
 
+                    {}
                     {viewMode === 'student' && analysisData && (
                         <div className="pt-8 no-print:bg-slate-100">
                             {/* --- 🖨️ Page 1: 종합 성취도 --- */}
@@ -1970,7 +1977,7 @@
                         </div>
                     )}
 
-                    {/* 🌟 뷰 모드: 기출 분석 보고서 🌟 */}
+                    {}
                     {viewMode === 'exam' && examReportData && (
                         <div className="pt-8 no-print:bg-slate-100 font-sans">
                             <div className="a4-page bg-white print-page-auto mb-8 relative">
@@ -2002,7 +2009,6 @@
                                         <div>
                                             <h3 className="text-sm font-bold text-slate-500 mb-2 flex items-center gap-1"><Icon name="book-open" size={16}/> 시험 범위</h3>
                                             <div className="flex flex-wrap gap-2">
-                                                {/* 🌟 시험범위 무조건 순수 대단원만 나오게 됨 */}
                                                 {examReportData.scopes.map((scope, idx) => (
                                                     <span key={idx} className="bg-white border border-slate-200 text-slate-700 px-3 py-1.5 rounded-lg text-[13px] font-bold shadow-sm">{scope}</span>
                                                 ))}
@@ -2021,7 +2027,6 @@
                                     </div>
                                 </div>
 
-                                {/* 🌟 2. 종합 출제 경향 및 학습 전략 보고서 🌟 */}
                                 <div className="mb-8 break-inside-avoid">
                                     <h2 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2 border-l-4 border-orange-500 pl-3">2. 종합 출제 경향 및 학습 전략</h2>
                                     
@@ -2049,7 +2054,6 @@
                                     </div>
                                 </div>
 
-                                {/* 🌟 3. 상대적 고난도 문항 심층 분석 (선생님 요청대로 원본 회색 카메라 뷰어 복구) 🌟 */}
                                 {examReportData.reportContent.hardQuestionsList.length > 0 && (
                                     <div className="mb-8 break-inside-avoid">
                                         <h2 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2 border-l-4 border-orange-500 pl-3">3. 상대적 고난도 문항 심층 분석</h2>
