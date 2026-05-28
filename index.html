@@ -179,11 +179,14 @@
             return { year, school, semester, exam, schoolExamDisplay, fullMatchKey };
         };
 
-        // 🌟 수정됨: 과정(학년-학기)과 학교가 둘 다 있으면 합쳐서 반환 ('3-2 해강중')
+        // 🌟 수정됨: 명시적인 school, semester 속성을 최우선으로 사용하여 조합 ('3-2 해강중')
         const getCourseDisplay = (info) => {
             if (!info) return '';
-            if (info.semester && info.semester !== "과정미상") {
-                return (info.school && info.school !== "학교미상") ? `${info.semester} ${info.school}` : info.semester;
+            const sem = info.semester && info.semester !== "과정미상" ? info.semester : "";
+            const sch = info.school && info.school !== "학교미상" ? info.school : "";
+            
+            if (sem) {
+                return sch ? `${sem} ${sch}` : sem;
             }
             return info.schoolExamDisplay || '';
         };
@@ -700,7 +703,8 @@
                     const data = snap.docs.map(d => {
                         const docData = d.data();
                         const parsed = parseExamInfo(docData.period);
-                        return { ...docData, ...parsed };
+                        // 🌟 명시적으로 저장된 속성이 있으면 덮어쓰기
+                        return { ...parsed, ...docData };
                     });
                     setStudents(data); localStorage.setItem('math_students_cache', JSON.stringify(data));
                 }, err => {
@@ -726,8 +730,6 @@
             }, [reportParam]);
 
             const optionsData = useMemo(() => {
-                // 🌟 과정과 시험 시기 콤보박스는 '시험 데이터'와 '학생 데이터' 양쪽에서 정보를 가져와 
-                // 학생 데이터가 없어도 미리 선택할 수 있도록 수정
                 const courseSet = new Set();
                 students.forEach(s => courseSet.add(getCourseDisplay(s)));
                 exams.forEach(e => courseSet.add(getCourseDisplay(e)));
@@ -738,7 +740,6 @@
                 exams.filter(e => getCourseDisplay(e) === filters.studentCourse).forEach(e => examSet.add(e.exam !== '시험미상' ? e.exam : '기타'));
                 const studentExams = [...examSet].filter(Boolean);
 
-                // 🌟 학생 이름은 오직 업로드된 '학생 데이터'에서만 가져옴
                 const studentNames = [...new Set(students.filter(s => getCourseDisplay(s) === filters.studentCourse && (s.exam !== '시험미상' ? s.exam : '기타') === filters.studentExam).map(s => s.name))].sort();
 
                 const examYears = [...new Set(exams.map(e => e.year))].filter(y => y && y !== "미상").sort();
@@ -767,7 +768,6 @@
             const analysisData = useMemo(() => {
                 if (viewMode !== 'student' || !filters.studentCourse || !filters.studentExam || !filters.studentName) return null;
                 
-                // 🌟 수정됨: getCourseDisplay(s)를 기준으로 타겟 학생을 찾도록 로직 통일
                 const targetStudent = students.find(s => s.name === filters.studentName && 
                     getCourseDisplay(s) === filters.studentCourse && 
                     (s.exam !== "시험미상" ? s.exam : "기타") === filters.studentExam);
@@ -784,8 +784,10 @@
                     let earnedScore = 0;
                     let status = 'X';
                     
-                    const correctAns = String(ex.answer || '').trim();
-                    const stuAnsStr = String(studentAns || '').trim();
+                    // 🌟 수정됨: 학생이 원문자(①)를 썼을 때 1로 인식하도록 정규화 🌟
+                    const normalizeAns = (ans) => String(ans || '').trim().replace(/①/g, '1').replace(/②/g, '2').replace(/③/g, '3').replace(/④/g, '4').replace(/⑤/g, '5');
+                    const correctAns = normalizeAns(ex.answer);
+                    const stuAnsStr = normalizeAns(studentAns);
 
                     if (stuAnsStr === 'O' || stuAnsStr === '정답') {
                         earnedScore = fullScore; status = 'O';
@@ -802,7 +804,11 @@
                         else { status = 'X'; }
                     } else {
                         const numAns = parseFloat(stuAnsStr);
-                        if (!isNaN(numAns) && correctAns === '') {
+                        const numCorrect = parseFloat(correctAns);
+                        
+                        if (!isNaN(numAns) && !isNaN(numCorrect) && numAns === numCorrect) {
+                            earnedScore = fullScore; status = 'O';
+                        } else if (!isNaN(numAns) && correctAns === '') {
                             earnedScore = numAns;
                             if (earnedScore >= fullScore && fullScore > 0) { earnedScore = fullScore; status = 'O'; } 
                             else if (earnedScore > 0) { status = '△'; } 
@@ -1106,14 +1112,21 @@
                                             for (let i = 0; i < Math.min(aoa.length, 15); i++) {
                                                 if (!aoa[i]) continue;
                                                 const rowStr = aoa[i].join(',').replace(/\s+/g, ''); 
-                                                if (rowStr.includes('대단원') || rowStr.includes('단원') || rowStr.includes('난이도') || rowStr.includes('배점') || rowStr.includes('출제내용') || rowStr.includes('출제시기')) { 
-                                                    headerIdx = i; fileType = 'EXAM'; break; 
-                                                }
-                                                if (rowStr.includes('쓴답') || (rowStr.includes('문제') && (rowStr.includes('정답') || rowStr.includes('취득점수')))) { 
+                                                
+                                                const hasStudentAns = rowStr.includes('쓴답') || rowStr.includes('학생답') || rowStr.includes('취득점수');
+                                                const hasExamInfo = rowStr.includes('대단원') || rowStr.includes('단원명') || rowStr.includes('난이도') || rowStr.includes('출제내용') || rowStr.includes('문항유형');
+                                                const hasNames = rowStr.includes('이름') || rowStr.includes('성명');
+
+                                                if (hasStudentAns) {
                                                     headerIdx = i; fileType = 'V_STUDENT'; break; 
-                                                }
-                                                if (rowStr.includes('이름') || rowStr.includes('성명') || rowStr.includes('학생')) { 
-                                                    headerIdx = i; fileType = 'H_STUDENT'; break; 
+                                                } else if (hasExamInfo) {
+                                                    headerIdx = i; fileType = 'EXAM'; break;
+                                                } else if (hasNames) {
+                                                    headerIdx = i; fileType = 'H_STUDENT'; break;
+                                                } else if (rowStr.includes('문제') && rowStr.includes('정답') && (rowStr.includes('점수') || rowStr.includes('배점'))) {
+                                                    headerIdx = i; fileType = 'V_STUDENT'; break;
+                                                } else if (rowStr.includes('출제시기') || rowStr.includes('배점')) {
+                                                    headerIdx = i; fileType = 'EXAM'; break;
                                                 }
                                             }
 
@@ -1185,13 +1198,17 @@
                                                     }
                                                     const responses = {};
                                                     cleanJson.forEach(row => {
-                                                        const getVal = (keywords) => {
+                                                        // 🌟 수정됨: 제외 키워드를 추가하여 '쓴답'과 '정답'을 완벽 분리
+                                                        const getVal = (keywords, excludes = []) => {
                                                             const key = Object.keys(row).find(k => {
                                                                 const cleanK = String(k).replace(/\s+/g, '');
-                                                                return keywords.some(kw => cleanK.includes(kw.replace(/\s+/g, '')));
+                                                                const isMatch = keywords.some(kw => cleanK.includes(kw.replace(/\s+/g, '')));
+                                                                const isExcluded = excludes.some(ex => cleanK.includes(ex.replace(/\s+/g, '')));
+                                                                return isMatch && !isExcluded;
                                                             });
                                                             return key ? String(row[key]).trim() : '';
                                                         };
+                                                        
                                                         const qNumStr = getVal(['문제', '문항', '번호', '순번']).replace(/[^0-9]/g, '');
                                                         if (qNumStr) {
                                                             const qNum = parseInt(qNumStr);
@@ -1199,7 +1216,13 @@
                                                             const rawStudentFull = getVal(['배점']); 
                                                             const numericMatch = rawScore.replace(/[^0-9.]/g, ''); 
                                                             const numericFullMatch = rawStudentFull.replace(/[^0-9.]/g, ''); 
-                                                            if (numericMatch !== '') {
+                                                            
+                                                            // 🌟 수정됨: 학생이 쓴 원문자(①, ② 등) 우선 파악
+                                                            const rawStudentAns = getVal(['쓴답', '학생답', '입력답', '답', '학생의답'], ['정답', '해설']);
+                                                            
+                                                            if (rawStudentAns !== '') {
+                                                                responses[qNum] = rawStudentAns;
+                                                            } else if (numericMatch !== '') {
                                                                 const earned = parseFloat(numericMatch);
                                                                 const sFull = parseFloat(numericFullMatch);
                                                                 if (!isNaN(sFull) && sFull > 0) responses[qNum] = { earned, studentFull: sFull };
@@ -1213,10 +1236,12 @@
                                                 }
                                                 else if (fileType === 'H_STUDENT') {
                                                     const parsedStudents = cleanJson.map(row => {
-                                                        const getVal = (keywords) => {
+                                                        const getVal = (keywords, excludes = []) => {
                                                             const key = Object.keys(row).find(k => {
                                                                 const cleanK = String(k).replace(/\s+/g, '');
-                                                                return keywords.some(kw => cleanK.includes(kw.replace(/\s+/g, '')));
+                                                                const isMatch = keywords.some(kw => cleanK.includes(kw.replace(/\s+/g, '')));
+                                                                const isExcluded = excludes.some(ex => cleanK.includes(ex.replace(/\s+/g, '')));
+                                                                return isMatch && !isExcluded;
                                                             });
                                                             return key ? String(row[key]).trim() : '';
                                                         };
@@ -1255,7 +1280,6 @@
                         } catch (e) { console.error("Firestore Save Error", e); }
                     }
 
-                    // 🌟 이미지 + PDF 통합 파이프라인 (타임아웃 방어 적용)
                     if (imageFiles.length > 0 || pdfFile) {
                         let pdfBase64 = null;
                         if (pdfFile) {
@@ -1391,7 +1415,8 @@
                     const currentTotalExams = [...exams, ...addedExams];
                     const fallbackPeriod = currentTotalExams.length > 0 ? currentTotalExams[0].period : '';
 
-                    addedStudents = addedStudents.map(s => {
+                    // 🌟 수정됨: 학생 데이터를 매핑할 때, 찾은 bestMatch의 상세 정보를 학생 객체로 복사 🌟
+                    const enrichedAddedStudents = addedStudents.map(s => {
                         let finalPeriod = s.period;
                         const studentInfo = parseExamInfo(s.period);
                         
@@ -1407,13 +1432,11 @@
                             const exInfo = parseExamInfo(ex.fileName || ex.period);
                             let score = 0;
                             
-                            // 파일명에서 분석한 (과정, 학교, 시험종류, 연도) 정보를 대조하여 가중치 점수 부여
                             if (studentInfo.semester !== "과정미상" && studentInfo.semester === exInfo.semester) score += 10;
                             if (studentInfo.school !== "학교미상" && studentInfo.school === exInfo.school) score += 10;
                             if (studentInfo.exam !== "시험미상" && studentInfo.exam === exInfo.exam) score += 5;
                             if (studentInfo.year !== "미상" && studentInfo.year === exInfo.year) score += 2;
                             
-                            // 과정(3-2)이나 학교(해강중) 중 하나라도 일치하면 유력한 후보로 선정
                             if (score > maxScore && score >= 10) { 
                                 maxScore = score;
                                 bestMatch = ex;
@@ -1421,16 +1444,25 @@
                         }
 
                         if (bestMatch) {
-                            finalPeriod = bestMatch.period;
+                            return {
+                                ...s,
+                                period: bestMatch.period,
+                                school: bestMatch.school,
+                                semester: bestMatch.semester,
+                                exam: bestMatch.exam,
+                                fullMatchKey: bestMatch.fullMatchKey
+                            };
                         } else {
-                            const semPrefix = finalPeriod ? finalPeriod.split(' ')[0] : '';
-                            const partialMatch = currentTotalExams.find(ex => ex.period.startsWith(semPrefix));
-                            if (partialMatch) finalPeriod = partialMatch.period;
-                            else finalPeriod = fallbackPeriod;
+                            const parsedInfo = parseExamInfo(s.period);
+                            return {
+                                ...s,
+                                period: fallbackPeriod,
+                                school: parsedInfo.school,
+                                semester: parsedInfo.semester,
+                                exam: parsedInfo.exam,
+                                fullMatchKey: parsedInfo.fullMatchKey
+                            };
                         }
-                        
-                        s.period = finalPeriod;
-                        return s;
                     });
 
                     if (addedExams.length > 0) {
@@ -1439,17 +1471,15 @@
                             db.collection('artifacts').doc(appId).collection('public').doc('data').collection('exams').doc(`${ex.period}_${ex.qNum}`).set(ex).catch(e => console.warn(e));
                         });
                         
-                        // 🌟 성취도 평가 파일일 경우 가짜 학생 데이터를 만들지 않고, 
-                        // 파일명 정보('3-2 해강중', '중간')만 필터에 띄워주고 학생 이름은 공란 유지
                         const achivementExam = addedExams.find(ex => ex.fileName && (ex.fileName.includes('성취도 평가') || ex.fileName.includes('성취도평가')));
                         if (achivementExam) {
                             const info = parseExamInfo(achivementExam.fileName || achivementExam.period);
                             
                             setFilters(prev => ({
                                 ...prev,
-                                studentCourse: getCourseDisplay(info), // '3-2 해강중' 등 결합
+                                studentCourse: getCourseDisplay(info),
                                 studentExam: info.exam !== "시험미상" ? info.exam : '기타',
-                                studentName: '' // 🌟 학생 이름은 반드시 공란 (이후 학생 파일 업로드 시 생성)
+                                studentName: ''
                             }));
                             setViewMode('student');
                         } else {
@@ -1465,21 +1495,25 @@
                         }
                     }
 
-                    if (addedStudents.length > 0) {
-                        setStudents(prev => [...prev.filter(p => !addedStudents.some(n => n.name === p.name && n.period === p.period)), ...addedStudents]);
-                        addedStudents.forEach(s => {
-                            const saveObj = { name: s.name, period: s.period, responses: s.responses };
+                    if (enrichedAddedStudents.length > 0) {
+                        setStudents(prev => [...prev.filter(p => !enrichedAddedStudents.some(n => n.name === p.name && n.period === p.period)), ...enrichedAddedStudents]);
+                        enrichedAddedStudents.forEach(s => {
+                            // DB에도 파싱된 정보(school, semester)를 같이 저장
+                            const saveObj = { 
+                                name: s.name, period: s.period, responses: s.responses,
+                                school: s.school || "학교미상",
+                                semester: s.semester || "과정미상",
+                                exam: s.exam || "시험미상"
+                            };
                             db.collection('artifacts').doc(appId).collection('public').doc('data').collection('students').doc(`${s.name}_${s.period}`).set(saveObj).catch(e => console.warn(e));
                         });
 
-                        // 🌟 학생 데이터가 업로드되면 자동으로 해당 학생의 결과를 즉시 띄워주기
-                        const lastStudent = addedStudents[addedStudents.length - 1];
-                        const info = parseExamInfo(lastStudent.period);
+                        const lastStudent = enrichedAddedStudents[enrichedAddedStudents.length - 1];
                         
                         setFilters(prev => ({
                             ...prev,
-                            studentCourse: getCourseDisplay(info) || prev.studentCourse,
-                            studentExam: info.exam !== "시험미상" ? info.exam : (prev.studentExam || '기타'),
+                            studentCourse: getCourseDisplay(lastStudent) || prev.studentCourse,
+                            studentExam: lastStudent.exam !== "시험미상" ? lastStudent.exam : (prev.studentExam || '기타'),
                             studentName: lastStudent.name
                         }));
                         setViewMode('student');
@@ -1488,7 +1522,7 @@
                     let msg = [];
                     if (isMasterDBUpdated) msg.push(`마스터DB 업데이트`);
                     if (addedExams.length > 0) msg.push(`기출 ${addedExams.length}문항 분석완료`);
-                    if (addedStudents.length > 0) msg.push(`학생 데이터 추가`);
+                    if (enrichedAddedStudents.length > 0) msg.push(`학생 데이터 추가`);
                     if (addedMediaCount > 0) msg.push(`원문 연결`);
 
                     if (msg.length > 0) showToast(`✅ 통합 데이터 처리 성공! (${msg.join(', ')})`, 'success');
@@ -1711,7 +1745,6 @@
                         </div>
                     )}
 
-                    {}
                     <div className="bg-white border-b shadow-sm p-4 sticky top-0 z-40 no-print flex flex-wrap gap-4 items-center justify-between">
                         <div className="flex items-center gap-6 w-full max-w-[850px]">
                             <h1 className="text-xl font-black text-indigo-900 flex items-center gap-2 mr-2 shrink-0">
@@ -1793,7 +1826,6 @@
                         </div>
                     </div>
 
-                    {}
                     {showDataModal && (
                         <div className="fixed inset-0 bg-slate-900/40 z-[999999] flex items-center justify-center p-4 backdrop-blur-sm no-print">
                             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[85vh] animate-in fade-in zoom-in duration-200">
@@ -1861,7 +1893,6 @@
                         </div>
                     )}
 
-                    {}
                     {viewMode === 'student' && analysisData && (
                         <div className="pt-8 no-print:bg-slate-100">
                             {/* --- 🖨️ Page 1: 종합 성취도 --- */}
@@ -1977,7 +2008,6 @@
                         </div>
                     )}
 
-                    {}
                     {viewMode === 'exam' && examReportData && (
                         <div className="pt-8 no-print:bg-slate-100 font-sans">
                             <div className="a4-page bg-white print-page-auto mb-8 relative">
